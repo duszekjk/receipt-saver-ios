@@ -31,8 +31,11 @@ struct DashboardView: View {
             }
             .navigationTitle("Paragony")
             .toolbar {
+                ToolbarItemGroup(placement: .navigationBarLeading) {
+                    NavigationLink("Lista", destination: ReceiptListView())
+                    NavigationLink("Match", destination: MatchReviewView())
+                }
                 ToolbarItemGroup(placement: .navigationBarTrailing) {
-                    Button("Lista") { }
                     Menu("Dodaj") {
                         Button("Aparat") { pickerSource = .camera; showPicker = true }
                         Button("Biblioteka") { pickerSource = .library; showPicker = true }
