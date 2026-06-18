@@ -24,11 +24,6 @@
 	<string>Aplikacja robi zdjęcia paragonów, aby analizować wydatki.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Aplikacja pozwala wybrać zdjęcie paragonu z biblioteki.</string>
-	<key>UIApplicationSceneManifest</key>
-	<dict>
-		<key>UIApplicationSupportsMultipleScenes</key>
-		<false/>
-	</dict>
 	<key>UILaunchScreen</key>
 	<dict/>
 	<key>UISupportedInterfaceOrientations</key>
