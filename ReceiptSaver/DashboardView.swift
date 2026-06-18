@@ -4,6 +4,7 @@ struct DashboardView: View {
     @State private var period = "month"
     @State private var summaries: [SummaryRow] = []
     @State private var showPicker = false
+    @State private var showScanner = false
     @State private var pickerSource: ImagePicker.Source = .camera
     @State private var uploadStatus = ""
 
@@ -11,35 +12,72 @@ struct DashboardView: View {
 
     var body: some View {
         NavigationView {
-            VStack {
+            VStack(spacing: 14) {
                 Picker("Okres", selection: $period) {
                     ForEach(periods, id: \.0) { key, label in Text(label).tag(key) }
                 }
                 .pickerStyle(.segmented)
-                .padding()
+                .padding(.horizontal)
                 .onChange(of: period) { _ in Task { await loadSummaries() } }
 
-                if !uploadStatus.isEmpty { Text(uploadStatus).font(.footnote).padding(.bottom, 4) }
+                if !uploadStatus.isEmpty {
+                    Text(uploadStatus)
+                        .font(.title3)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal)
+                }
 
                 List(summaries) { row in
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(row.period ?? "Brak daty").font(.headline)
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text(row.period ?? "Brak daty")
+                            .font(.title2)
+                            .bold()
                         Text("Wydano: \(row.spent) zł")
-                        Text("Oszczędzono na promocjach: \(row.saved) zł")
+                            .font(.title3)
+                        Text("Oszczędzono: \(row.saved) zł")
+                            .font(.title3)
+                    }
+                    .padding(.vertical, 10)
+                }
+
+                VStack(spacing: 12) {
+                    Button(action: { openBestScanner() }) {
+                        Text("Zeskanuj paragon")
+                            .font(.title2)
+                            .bold()
+                            .frame(maxWidth: .infinity, minHeight: 58)
+                    }
+                    .buttonStyle(.borderedProminent)
+
+                    HStack(spacing: 12) {
+                        NavigationLink(destination: ReceiptListView()) {
+                            Text("Lista")
+                                .font(.title3)
+                                .frame(maxWidth: .infinity, minHeight: 52)
+                        }
+                        .buttonStyle(.bordered)
+
+                        NavigationLink(destination: MatchReviewView()) {
+                            Text("Dopasuj")
+                                .font(.title3)
+                                .frame(maxWidth: .infinity, minHeight: 52)
+                        }
+                        .buttonStyle(.bordered)
                     }
                 }
+                .padding()
             }
             .navigationTitle("Paragony")
             .toolbar {
-                ToolbarItemGroup(placement: .navigationBarLeading) {
-                    NavigationLink("Lista", destination: ReceiptListView())
-                    NavigationLink("Match", destination: MatchReviewView())
-                }
-                ToolbarItemGroup(placement: .navigationBarTrailing) {
+                ToolbarItem(placement: .navigationBarTrailing) {
                     Menu("Dodaj") {
+                        if DocumentScannerView.isAvailable {
+                            Button("Skan dokumentu") { showScanner = true }
+                        }
                         Button("Aparat") { pickerSource = .camera; showPicker = true }
                         Button("Biblioteka") { pickerSource = .library; showPicker = true }
                     }
+                    .font(.title3)
                 }
             }
             .sheet(isPresented: $showPicker) {
@@ -47,13 +85,28 @@ struct DashboardView: View {
                     Task { await upload(image) }
                 }
             }
+            .sheet(isPresented: $showScanner) {
+                DocumentScannerView(onImage: { image in
+                    Task { await upload(image) }
+                }, onCancel: {})
+            }
             .task { await loadSummaries() }
+        }
+        .navigationViewStyle(.stack)
+    }
+
+    private func openBestScanner() {
+        if DocumentScannerView.isAvailable {
+            showScanner = true
+        } else {
+            pickerSource = .camera
+            showPicker = true
         }
     }
 
     private func loadSummaries() async {
         do { summaries = try await APIClient.shared.summaries(period: period) }
-        catch { uploadStatus = "Nie udało się pobrać podsumowań: \(error.localizedDescription)" }
+        catch { uploadStatus = "Nie udało się pobrać podsumowań" }
     }
 
     private func upload(_ image: UIImage) async {
@@ -63,7 +116,7 @@ struct DashboardView: View {
             uploadStatus = "Paragon dodany"
             await loadSummaries()
         } catch {
-            uploadStatus = "Błąd uploadu: \(error.localizedDescription)"
+            uploadStatus = "Błąd wysyłania paragonu"
         }
     }
 }
