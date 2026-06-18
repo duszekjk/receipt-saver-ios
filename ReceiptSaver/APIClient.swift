@@ -37,7 +37,8 @@ final class APIClient: ObservableObject {
     }
 
     func uploadReceipt(image: UIImage) async throws -> Receipt {
-        guard let imageData = image.jpegData(compressionQuality: 0.72) else {
+        let processed = image.preprocessedForReceipt()
+        guard let imageData = processed.jpegData(compressionQuality: 0.58) else {
             throw URLError(.cannotDecodeContentData)
         }
         var req = request("receipts/scan/", method: "POST")
@@ -45,7 +46,7 @@ final class APIClient: ObservableObject {
         req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
         var body = Data()
         body.append("--\(boundary)\r\n")
-        body.append("Content-Disposition: form-data; name=\"image\"; filename=\"receipt.jpg\"\r\n")
+        body.append("Content-Disposition: form-data; name=\"image\"; filename=\"receipt_gray.jpg\"\r\n")
         body.append("Content-Type: image/jpeg\r\n\r\n")
         body.append(imageData)
         body.append("\r\n--\(boundary)--\r\n")
