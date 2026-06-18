@@ -1,4 +1,5 @@
 import SwiftUI
+import AVFoundation
 
 struct DashboardView: View {
     @State private var period = "month"
@@ -72,9 +73,9 @@ struct DashboardView: View {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Menu("Dodaj") {
                         if DocumentScannerView.isAvailable {
-                            Button("Skan dokumentu") { showScanner = true }
+                            Button("Skan dokumentu") { openBestScanner() }
                         }
-                        Button("Aparat") { pickerSource = .camera; showPicker = true }
+                        Button("Aparat") { openCameraPicker() }
                         Button("Biblioteka") { pickerSource = .library; showPicker = true }
                     }
                     .font(.title3)
@@ -96,11 +97,41 @@ struct DashboardView: View {
     }
 
     private func openBestScanner() {
-        if DocumentScannerView.isAvailable {
-            showScanner = true
-        } else {
+        requestCameraAccess { granted in
+            guard granted else {
+                uploadStatus = "Brak dostępu do aparatu. Włącz dostęp w Ustawieniach."
+                return
+            }
+            if DocumentScannerView.isAvailable {
+                showScanner = true
+            } else {
+                pickerSource = .camera
+                showPicker = true
+            }
+        }
+    }
+
+    private func openCameraPicker() {
+        requestCameraAccess { granted in
+            guard granted else {
+                uploadStatus = "Brak dostępu do aparatu. Włącz dostęp w Ustawieniach."
+                return
+            }
             pickerSource = .camera
             showPicker = true
+        }
+    }
+
+    private func requestCameraAccess(_ completion: @escaping (Bool) -> Void) {
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .authorized:
+            completion(true)
+        case .notDetermined:
+            AVCaptureDevice.requestAccess(for: .video) { granted in
+                DispatchQueue.main.async { completion(granted) }
+            }
+        default:
+            completion(false)
         }
     }
 
