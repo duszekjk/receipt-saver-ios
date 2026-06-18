@@ -21,9 +21,11 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
-	<string>Aplikacja robi zdjęcia paragonów, aby analizować wydatki.</string>
+	<string>Camera access is needed to scan receipts.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Aplikacja pozwala wybrać zdjęcie paragonu z biblioteki.</string>
+	<string>Photo library access is needed to choose receipt photos.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Photo library write access is used only when saving a selected receipt image.</string>
 	<key>UILaunchScreen</key>
 	<dict/>
 	<key>UISupportedInterfaceOrientations</key>
