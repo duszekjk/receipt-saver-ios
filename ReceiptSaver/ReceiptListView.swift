@@ -6,12 +6,22 @@ struct ReceiptListView: View {
 
     var body: some View {
         List(receipts) { receipt in
-            VStack(alignment: .leading, spacing: 4) {
-                Text(receipt.merchant_name).font(.headline)
+            VStack(alignment: .leading, spacing: 10) {
+                Text(receipt.merchant_name.isEmpty ? "Nieznany sklep" : receipt.merchant_name)
+                    .font(.title2)
+                    .bold()
                 Text("Suma: \(receipt.total_amount ?? "?") \(receipt.currency)")
-                if let saved = receipt.discount_total { Text("Promocje: \(saved) zł") }
-                if receipt.duplicate_of != nil { Text("Możliwy duplikat").font(.caption) }
+                    .font(.title3)
+                if let saved = receipt.discount_total {
+                    Text("Oszczędzono: \(saved) zł")
+                        .font(.title3)
+                }
+                if receipt.duplicate_of != nil {
+                    Text("Możliwy duplikat")
+                        .font(.headline)
+                }
             }
+            .padding(.vertical, 10)
         }
         .navigationTitle("Paragony")
         .task { await load() }
