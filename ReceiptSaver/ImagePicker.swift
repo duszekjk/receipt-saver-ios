@@ -97,7 +97,7 @@ struct DocumentScannerView: UIViewControllerRepresentable {
 }
 
 extension UIImage {
-    func preprocessedForReceipt(maxDimension: CGFloat = 1400) -> UIImage {
+    func preprocessedForReceipt(maxDimension: CGFloat = 1800) -> UIImage {
         let resized = resizedKeepingAspect(maxDimension: maxDimension)
         return resized.grayscaleImage() ?? resized
     }
