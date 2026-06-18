@@ -28,6 +28,13 @@ struct DashboardView: View {
                         .padding(.horizontal)
                 }
 
+                Button("Sprawdź dostęp do aparatu") {
+                    checkCameraPermissionOnly()
+                }
+                .font(.title3)
+                .buttonStyle(.bordered)
+                .padding(.horizontal)
+
                 List(summaries) { row in
                     VStack(alignment: .leading, spacing: 10) {
                         Text(row.period ?? "Brak daty")
@@ -94,6 +101,25 @@ struct DashboardView: View {
             .task { await loadSummaries() }
         }
         .navigationViewStyle(.stack)
+    }
+
+    private func checkCameraPermissionOnly() {
+        let status = AVCaptureDevice.authorizationStatus(for: .video)
+        uploadStatus = "Status aparatu: \(cameraStatusText(status))"
+        requestCameraAccess { granted in
+            let newStatus = AVCaptureDevice.authorizationStatus(for: .video)
+            uploadStatus = granted ? "Aparat dostępny: \(cameraStatusText(newStatus))" : "Brak dostępu: \(cameraStatusText(newStatus))"
+        }
+    }
+
+    private func cameraStatusText(_ status: AVAuthorizationStatus) -> String {
+        switch status {
+        case .authorized: return "authorized"
+        case .notDetermined: return "notDetermined"
+        case .denied: return "denied"
+        case .restricted: return "restricted"
+        @unknown default: return "unknown"
+        }
     }
 
     private func openBestScanner() {
