@@ -4,6 +4,7 @@ struct DashboardView: View {
     @State private var period = "month"
     @State private var summaries: [SummaryRow] = []
     @State private var showPicker = false
+    @State private var showScanner = false
     @State private var pickerSource: ImagePicker.Source = .camera
     @State private var uploadStatus = ""
 
@@ -40,11 +41,8 @@ struct DashboardView: View {
                 }
 
                 VStack(spacing: 12) {
-                    Button(action: {
-                        pickerSource = .camera
-                        showPicker = true
-                    }) {
-                        Text("Zrób zdjęcie paragonu")
+                    Button(action: { openBestScanner() }) {
+                        Text("Zeskanuj paragon")
                             .font(.title2)
                             .bold()
                             .frame(maxWidth: .infinity, minHeight: 58)
@@ -73,6 +71,9 @@ struct DashboardView: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Menu("Dodaj") {
+                        if DocumentScannerView.isAvailable {
+                            Button("Skan dokumentu") { showScanner = true }
+                        }
                         Button("Aparat") { pickerSource = .camera; showPicker = true }
                         Button("Biblioteka") { pickerSource = .library; showPicker = true }
                     }
@@ -84,18 +85,28 @@ struct DashboardView: View {
                     Task { await upload(image) }
                 }
             }
+            .sheet(isPresented: $showScanner) {
+                DocumentScannerView(onImage: { image in
+                    Task { await upload(image) }
+                }, onCancel: {})
+            }
             .task { await loadSummaries() }
         }
         .navigationViewStyle(.stack)
     }
 
-    private func loadSummaries() async {
-        do {
-            summaries = try await APIClient.shared.summaries(period: period)
-        } catch {
-            summaries = LocalCache.shared.loadSummaries(period: period)
-            uploadStatus = summaries.isEmpty ? "Nie udało się pobrać podsumowań" : "Offline: pokazuję zapisane podsumowania"
+    private func openBestScanner() {
+        if DocumentScannerView.isAvailable {
+            showScanner = true
+        } else {
+            pickerSource = .camera
+            showPicker = true
         }
+    }
+
+    private func loadSummaries() async {
+        do { summaries = try await APIClient.shared.summaries(period: period) }
+        catch { uploadStatus = "Nie udało się pobrać podsumowań" }
     }
 
     private func upload(_ image: UIImage) async {
