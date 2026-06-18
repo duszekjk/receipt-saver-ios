@@ -8,7 +8,7 @@ final class APIClient: ObservableObject {
     var bearerToken: String?
 
     private func request(_ path: String, method: String = "GET") -> URLRequest {
-        var req = URLRequest(url: baseURL.appendingPathComponent(path))
+        var req = URLRequest(url: baseURL.appendingPathComponent(path), cachePolicy: .reloadIgnoringLocalCacheData)
         req.httpMethod = method
         if let token = bearerToken, !token.isEmpty {
             req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -20,15 +20,19 @@ final class APIClient: ObservableObject {
         let url = baseURL.appendingPathComponent("summaries/")
         var components = URLComponents(url: url, resolvingAgainstBaseURL: false)!
         components.queryItems = [URLQueryItem(name: "period", value: period)]
-        var req = URLRequest(url: components.url!)
+        var req = URLRequest(url: components.url!, cachePolicy: .reloadIgnoringLocalCacheData)
         if let token = bearerToken { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         let (data, _) = try await URLSession.shared.data(for: req)
-        return try JSONDecoder().decode([SummaryRow].self, from: data)
+        let rows = try JSONDecoder().decode([SummaryRow].self, from: data)
+        LocalCache.shared.saveSummaries(rows, period: period)
+        return rows
     }
 
     func receipts() async throws -> [Receipt] {
         let (data, _) = try await URLSession.shared.data(for: request("receipts/"))
-        return try JSONDecoder().decode([Receipt].self, from: data)
+        let rows = try JSONDecoder().decode([Receipt].self, from: data)
+        LocalCache.shared.saveReceipts(rows)
+        return rows
     }
 
     func matchCandidates() async throws -> [MatchCandidate] {
@@ -38,7 +42,7 @@ final class APIClient: ObservableObject {
 
     func uploadReceipt(image: UIImage) async throws -> Receipt {
         let processed = image.preprocessedForReceipt()
-        guard let imageData = processed.jpegData(compressionQuality: 0.58) else {
+        guard let imageData = processed.jpegData(compressionQuality: 0.72) else {
             throw URLError(.cannotDecodeContentData)
         }
         var req = request("receipts/scan/", method: "POST")
@@ -52,7 +56,9 @@ final class APIClient: ObservableObject {
         body.append("\r\n--\(boundary)--\r\n")
         req.httpBody = body
         let (data, _) = try await URLSession.shared.data(for: req)
-        return try JSONDecoder().decode(Receipt.self, from: data)
+        let receipt = try JSONDecoder().decode(Receipt.self, from: data)
+        LocalCache.shared.upsertReceipt(receipt)
+        return receipt
     }
 }
 
