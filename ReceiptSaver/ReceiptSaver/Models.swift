@@ -1,5 +1,15 @@
 import Foundation
 
+struct MobileProfile: Codable {
+    let user_id: Int
+    let username: String
+    let is_superuser: Bool
+    let profile_id: Int?
+    let display_name: String
+    let family_id: Int?
+    let family_name: String
+}
+
 struct ReceiptItem: Identifiable, Codable {
     let id: Int
     let name: String
@@ -23,8 +33,9 @@ struct Receipt: Identifiable, Codable {
 }
 
 struct SummaryRow: Identifiable, Codable {
-    var id: String { String(describing: period) }
+    var id: String { String(describing: period) + "-" + String(describing: user_id) }
     let period: String?
+    let user_id: Int?
     let spent: String
     let saved: String
     let halfyear: Int?
