@@ -163,7 +163,7 @@ struct DashboardView: View {
 
     private func loadSummaries() async {
         do { summaries = try await APIClient.shared.summaries(period: period) }
-        catch { uploadStatus = "Nie udało się pobrać podsumowań" }
+        catch { uploadStatus = "Nie udało się pobrać podsumowań: \(errorMessage(error))" }
     }
 
     private func upload(_ image: UIImage) async {
@@ -173,7 +173,20 @@ struct DashboardView: View {
             uploadStatus = "Paragon dodany"
             await loadSummaries()
         } catch {
-            uploadStatus = "Błąd wysyłania paragonu"
+            uploadStatus = "Błąd wysyłania paragonu: \(errorMessage(error))"
         }
+    }
+
+    private func errorMessage(_ error: Error) -> String {
+        if let apiError = error as? APIError {
+            return apiError.errorDescription ?? "Błąd API"
+        }
+        if let urlError = error as? URLError {
+            return "URL \(urlError.code.rawValue): \(urlError.localizedDescription)"
+        }
+        if let decodingError = error as? DecodingError {
+            return "Błąd JSON: \(decodingError)"
+        }
+        return error.localizedDescription
     }
 }
