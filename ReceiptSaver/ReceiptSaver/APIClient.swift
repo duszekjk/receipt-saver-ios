@@ -5,15 +5,20 @@ final class APIClient {
     static let shared = APIClient()
 
     var baseURL = URL(string: "https://example.com/api")!
-    var bearerToken: String?
 
-    private func request(_ path: String, method: String = "GET") -> URLRequest {
+    private func request(_ path: String, method: String = "GET", body: Data? = nil) -> URLRequest {
         var req = URLRequest(url: baseURL.appendingPathComponent(path), cachePolicy: .reloadIgnoringLocalCacheData)
         req.httpMethod = method
-        if let token = bearerToken, !token.isEmpty {
-            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        req.httpBody = body
+        if let credentials = CredentialStore.shared.load() {
+            HMACSigner.sign(request: &req, credentials: credentials, body: body)
         }
         return req
+    }
+
+    func me() async throws -> MobileProfile {
+        let (data, _) = try await URLSession.shared.data(for: request("me/"))
+        return try JSONDecoder().decode(MobileProfile.self, from: data)
     }
 
     func summaries(period: String) async throws -> [SummaryRow] {
@@ -21,7 +26,10 @@ final class APIClient {
         var components = URLComponents(url: url, resolvingAgainstBaseURL: false)!
         components.queryItems = [URLQueryItem(name: "period", value: period)]
         var req = URLRequest(url: components.url!, cachePolicy: .reloadIgnoringLocalCacheData)
-        if let token = bearerToken { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+        req.httpMethod = "GET"
+        if let credentials = CredentialStore.shared.load() {
+            HMACSigner.sign(request: &req, credentials: credentials, body: nil)
+        }
         let (data, _) = try await URLSession.shared.data(for: req)
         let rows = try JSONDecoder().decode([SummaryRow].self, from: data)
         LocalCache.shared.saveSummaries(rows, period: period)
@@ -45,16 +53,15 @@ final class APIClient {
         guard let imageData = processed.jpegData(compressionQuality: 0.72) else {
             throw URLError(.cannotDecodeContentData)
         }
-        var req = request("receipts/scan/", method: "POST")
         let boundary = UUID().uuidString
-        req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
         var body = Data()
         body.append("--\(boundary)\r\n")
         body.append("Content-Disposition: form-data; name=\"image\"; filename=\"receipt_gray.jpg\"\r\n")
         body.append("Content-Type: image/jpeg\r\n\r\n")
         body.append(imageData)
         body.append("\r\n--\(boundary)--\r\n")
-        req.httpBody = body
+        var req = request("receipts/scan/", method: "POST", body: body)
+        req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
         let (data, _) = try await URLSession.shared.data(for: req)
         let receipt = try JSONDecoder().decode(Receipt.self, from: data)
         LocalCache.shared.upsertReceipt(receipt)
