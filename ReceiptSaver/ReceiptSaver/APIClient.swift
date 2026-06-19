@@ -1,10 +1,19 @@
 import Foundation
 import UIKit
 
+struct APIError: Error, LocalizedError {
+    let statusCode: Int
+    let body: String
+
+    var errorDescription: String? {
+        body.isEmpty ? "HTTP \(statusCode)" : "HTTP \(statusCode): \(body)"
+    }
+}
+
 final class APIClient {
     static let shared = APIClient()
 
-    var baseURL = URL(string: "https://example.com/api")!
+    var baseURL = URL(string: "https://www.duszekjk.com/receipts")!
 
     private func request(_ path: String, method: String = "GET", body: Data? = nil) -> URLRequest {
         var req = URLRequest(url: baseURL.appendingPathComponent(path), cachePolicy: .reloadIgnoringLocalCacheData)
@@ -16,8 +25,17 @@ final class APIClient {
         return req
     }
 
+    private func data(for request: URLRequest) async throws -> Data {
+        let (data, response) = try await URLSession.shared.data(for: request)
+        if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+            let body = String(data: data, encoding: .utf8) ?? ""
+            throw APIError(statusCode: http.statusCode, body: body)
+        }
+        return data
+    }
+
     func me() async throws -> MobileProfile {
-        let (data, _) = try await URLSession.shared.data(for: request("me/"))
+        let data = try await data(for: request("me/"))
         return try JSONDecoder().decode(MobileProfile.self, from: data)
     }
 
@@ -30,21 +48,21 @@ final class APIClient {
         if let credentials = CredentialStore.shared.load() {
             HMACSigner.sign(request: &req, credentials: credentials, body: nil)
         }
-        let (data, _) = try await URLSession.shared.data(for: req)
+        let data = try await data(for: req)
         let rows = try JSONDecoder().decode([SummaryRow].self, from: data)
         LocalCache.shared.saveSummaries(rows, period: period)
         return rows
     }
 
     func receipts() async throws -> [Receipt] {
-        let (data, _) = try await URLSession.shared.data(for: request("receipts/"))
+        let data = try await data(for: request("receipts/"))
         let rows = try JSONDecoder().decode([Receipt].self, from: data)
         LocalCache.shared.saveReceipts(rows)
         return rows
     }
 
     func matchCandidates() async throws -> [MatchCandidate] {
-        let (data, _) = try await URLSession.shared.data(for: request("matches/review/"))
+        let data = try await data(for: request("matches/review/"))
         return try JSONDecoder().decode([MatchCandidate].self, from: data)
     }
 
@@ -62,7 +80,7 @@ final class APIClient {
         body.append("\r\n--\(boundary)--\r\n")
         var req = request("receipts/scan/", method: "POST", body: body)
         req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
-        let (data, _) = try await URLSession.shared.data(for: req)
+        let data = try await data(for: req)
         let receipt = try JSONDecoder().decode(Receipt.self, from: data)
         LocalCache.shared.upsertReceipt(receipt)
         return receipt
