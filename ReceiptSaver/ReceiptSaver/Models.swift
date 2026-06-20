@@ -36,8 +36,8 @@ struct SummaryRow: Identifiable, Codable {
     var id: String { String(describing: period) + "-" + String(describing: user_id) }
     let period: String?
     let user_id: Int?
-    let spent: String
-    let saved: String
+    let spent: Double
+    let saved: Double
     let halfyear: Int?
 
     enum CodingKeys: String, CodingKey {
@@ -48,12 +48,12 @@ struct SummaryRow: Identifiable, Codable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         period = try container.decodeIfPresent(String.self, forKey: .period)
         user_id = try container.decodeIfPresent(Int.self, forKey: .user_id)
-        spent = try container.decodeFlexibleString(forKey: .spent) ?? "0"
-        saved = try container.decodeFlexibleString(forKey: .saved) ?? "0"
+        spent = try container.decodeFlexibleDouble(forKey: .spent) ?? 0
+        saved = try container.decodeFlexibleDouble(forKey: .saved) ?? 0
         halfyear = try container.decodeIfPresent(Int.self, forKey: .halfyear)
     }
 
-    init(period: String?, user_id: Int?, spent: String, saved: String, halfyear: Int?) {
+    init(period: String?, user_id: Int?, spent: Double, saved: Double, halfyear: Int?) {
         self.period = period
         self.user_id = user_id
         self.spent = spent
@@ -80,15 +80,15 @@ struct MatchCandidate: Identifiable, Codable {
 }
 
 extension KeyedDecodingContainer {
-    func decodeFlexibleString(forKey key: Key) throws -> String? {
-        if let value = try decodeIfPresent(String.self, forKey: key) {
+    func decodeFlexibleDouble(forKey key: Key) throws -> Double? {
+        if let value = try decodeIfPresent(Double.self, forKey: key) {
             return value
         }
         if let value = try decodeIfPresent(Int.self, forKey: key) {
-            return String(value)
+            return Double(value)
         }
-        if let value = try decodeIfPresent(Double.self, forKey: key) {
-            return String(format: "%.2f", value)
+        if let value = try decodeIfPresent(String.self, forKey: key) {
+            return Double(value.replacingOccurrences(of: ",", with: "."))
         }
         return nil
     }
