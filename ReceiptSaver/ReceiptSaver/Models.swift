@@ -39,6 +39,27 @@ struct SummaryRow: Identifiable, Codable {
     let spent: String
     let saved: String
     let halfyear: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case period, user_id, spent, saved, halfyear
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        period = try container.decodeIfPresent(String.self, forKey: .period)
+        user_id = try container.decodeIfPresent(Int.self, forKey: .user_id)
+        spent = try container.decodeFlexibleString(forKey: .spent) ?? "0"
+        saved = try container.decodeFlexibleString(forKey: .saved) ?? "0"
+        halfyear = try container.decodeIfPresent(Int.self, forKey: .halfyear)
+    }
+
+    init(period: String?, user_id: Int?, spent: String, saved: String, halfyear: Int?) {
+        self.period = period
+        self.user_id = user_id
+        self.spent = spent
+        self.saved = saved
+        self.halfyear = halfyear
+    }
 }
 
 struct BankTransaction: Identifiable, Codable {
@@ -56,4 +77,19 @@ struct MatchCandidate: Identifiable, Codable {
     let status: String
     let receipt: Receipt
     let bank_transaction: BankTransaction
+}
+
+extension KeyedDecodingContainer {
+    func decodeFlexibleString(forKey key: Key) throws -> String? {
+        if let value = try decodeIfPresent(String.self, forKey: key) {
+            return value
+        }
+        if let value = try decodeIfPresent(Int.self, forKey: key) {
+            return String(value)
+        }
+        if let value = try decodeIfPresent(Double.self, forKey: key) {
+            return String(format: "%.2f", value)
+        }
+        return nil
+    }
 }
