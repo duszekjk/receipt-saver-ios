@@ -40,9 +40,9 @@ struct DashboardView: View {
                         Text(row.period ?? "Brak daty")
                             .font(.title2)
                             .bold()
-                        Text("Wydano: \(row.spent) zł")
+                        Text("Wydano: \(money(row.spent)) zł")
                             .font(.title3)
-                        Text("Oszczędzono: \(row.saved) zł")
+                        Text("Oszczędzono: \(money(row.saved)) zł")
                             .font(.title3)
                     }
                     .padding(.vertical, 10)
@@ -101,6 +101,10 @@ struct DashboardView: View {
             .task { await loadSummaries() }
         }
         .navigationViewStyle(.stack)
+    }
+
+    private func money(_ value: Double) -> String {
+        String(format: "%.2f", value)
     }
 
     private func checkCameraPermissionOnly() {
