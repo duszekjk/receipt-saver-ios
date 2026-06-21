@@ -39,6 +39,26 @@ final class APIClient {
         return try JSONDecoder().decode(MobileProfile.self, from: data)
     }
 
+    func dashboard(period: String, category: String, limit: Int) async throws -> DashboardStats {
+        let url = baseURL.appendingPathComponent("dashboard/")
+        var components = URLComponents(url: url, resolvingAgainstBaseURL: false)!
+        var items = [
+            URLQueryItem(name: "period", value: period),
+            URLQueryItem(name: "limit", value: String(limit))
+        ]
+        if !category.isEmpty {
+            items.append(URLQueryItem(name: "category", value: category))
+        }
+        components.queryItems = items
+        var req = URLRequest(url: components.url!, cachePolicy: .reloadIgnoringLocalCacheData)
+        req.httpMethod = "GET"
+        if let credentials = CredentialStore.shared.load() {
+            HMACSigner.sign(request: &req, credentials: credentials, body: nil)
+        }
+        let data = try await data(for: req)
+        return try JSONDecoder().decode(DashboardStats.self, from: data)
+    }
+
     func summaries(period: String) async throws -> [SummaryRow] {
         let url = baseURL.appendingPathComponent("summaries/")
         var components = URLComponents(url: url, resolvingAgainstBaseURL: false)!
