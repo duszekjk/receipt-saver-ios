@@ -9,7 +9,7 @@ struct MatchReviewView: View {
             VStack(alignment: .leading, spacing: 10) {
                 Text("Dopasowanie: \(Int(candidate.score * 100))%")
                     .font(.title2)
-                    .bold()
+                    .fontWeight(.bold)
                 Text("Paragon: \(candidate.receipt.merchant_name), \(candidate.receipt.total_amount ?? "?") zł")
                     .font(.title3)
                 Text("Bank: \(candidate.bank_transaction.merchant_name), \(candidate.bank_transaction.amount) zł")
