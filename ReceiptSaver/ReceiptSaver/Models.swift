@@ -40,9 +40,7 @@ struct SummaryRow: Identifiable, Codable {
     let saved: Double
     let halfyear: Int?
 
-    enum CodingKeys: String, CodingKey {
-        case period, user_id, spent, saved, halfyear
-    }
+    enum CodingKeys: String, CodingKey { case period, user_id, spent, saved, halfyear }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -60,6 +58,32 @@ struct SummaryRow: Identifiable, Codable {
         self.saved = saved
         self.halfyear = halfyear
     }
+}
+
+struct DashboardCards: Codable {
+    let spent: Double
+    let saved: Double
+    let receipt_count: Int
+    let store_count: Int
+}
+
+struct DashboardBarRow: Identifiable, Codable {
+    var id: String { name }
+    let name: String
+    let spent: Double
+    let saved: Double
+    let count: Int
+}
+
+struct DashboardStats: Codable {
+    let period: String
+    let category_filter: String
+    let cards: DashboardCards
+    let available_categories: [String]
+    let categories: [DashboardBarRow]
+    let subcategories: [DashboardBarRow]
+    let products: [DashboardBarRow]
+    let stores: [DashboardBarRow]
 }
 
 struct BankTransaction: Identifiable, Codable {
@@ -81,15 +105,9 @@ struct MatchCandidate: Identifiable, Codable {
 
 extension KeyedDecodingContainer {
     func decodeFlexibleDouble(forKey key: Key) throws -> Double? {
-        if let value = try decodeIfPresent(Double.self, forKey: key) {
-            return value
-        }
-        if let value = try decodeIfPresent(Int.self, forKey: key) {
-            return Double(value)
-        }
-        if let value = try decodeIfPresent(String.self, forKey: key) {
-            return Double(value.replacingOccurrences(of: ",", with: "."))
-        }
+        if let value = try decodeIfPresent(Double.self, forKey: key) { return value }
+        if let value = try decodeIfPresent(Int.self, forKey: key) { return Double(value) }
+        if let value = try decodeIfPresent(String.self, forKey: key) { return Double(value.replacingOccurrences(of: ",", with: ".")) }
         return nil
     }
 }
