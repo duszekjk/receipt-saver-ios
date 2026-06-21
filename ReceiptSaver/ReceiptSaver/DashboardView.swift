@@ -16,51 +16,65 @@ struct DashboardView: View {
 
     var body: some View {
         NavigationView {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    Picker("Okres", selection: $period) {
-                        ForEach(periods, id: \.0) { key, label in Text(label).tag(key) }
+            ZStack(alignment: .bottom) {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 18) {
+                        Picker("Okres", selection: $period) {
+                            ForEach(periods, id: \.0) { key, label in Text(label).tag(key) }
+                        }
+                        .pickerStyle(.segmented)
+                        .onChange(of: period) { _ in Task { await loadDashboard() } }
+
+                        if !uploadStatus.isEmpty {
+                            Text(uploadStatus)
+                                .font(.body)
+                                .multilineTextAlignment(.leading)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding()
+                                .background(Color.secondary.opacity(0.10))
+                                .clipShape(RoundedRectangle(cornerRadius: 14))
+                        }
+
+                        if let dashboard = dashboard {
+                            cards(dashboard.cards)
+
+                            sectionHeader("Największe kategorie")
+                            BarList(rows: dashboard.categories, maxValue: maxSpent(dashboard.categories))
+
+                            filterControls(dashboard.available_categories)
+
+                            sectionHeader(categoryFilter.isEmpty ? "Największe subkategorie" : "Subkategorie: \(categoryFilter)")
+                            BarList(rows: dashboard.subcategories, maxValue: maxSpent(dashboard.subcategories))
+
+                            sectionHeader("Najdroższe produkty")
+                            BarList(rows: dashboard.products, maxValue: maxSpent(dashboard.products))
+
+                            sectionHeader("Sklepy")
+                            BarList(rows: dashboard.stores, maxValue: maxSpent(dashboard.stores))
+                        } else {
+                            ProgressView("Wczytuję podsumowanie...")
+                                .frame(maxWidth: .infinity, minHeight: 160)
+                        }
                     }
-                    .pickerStyle(.segmented)
-                    .onChange(of: period) { _ in Task { await loadDashboard() } }
-
-                    if !uploadStatus.isEmpty {
-                        Text(uploadStatus)
-                            .font(.body)
-                            .multilineTextAlignment(.leading)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding()
-                            .background(Color.secondary.opacity(0.10))
-                            .clipShape(RoundedRectangle(cornerRadius: 14))
-                    }
-
-                    if let dashboard = dashboard {
-                        cards(dashboard.cards)
-
-                        sectionHeader("Największe kategorie")
-                        BarList(rows: dashboard.categories, maxValue: maxSpent(dashboard.categories))
-
-                        filterControls(dashboard.available_categories)
-
-                        sectionHeader(categoryFilter.isEmpty ? "Największe subkategorie" : "Subkategorie: \(categoryFilter)")
-                        BarList(rows: dashboard.subcategories, maxValue: maxSpent(dashboard.subcategories))
-
-                        sectionHeader("Najdroższe produkty")
-                        BarList(rows: dashboard.products, maxValue: maxSpent(dashboard.products))
-
-                        sectionHeader("Sklepy")
-                        BarList(rows: dashboard.stores, maxValue: maxSpent(dashboard.stores))
-                    } else {
-                        ProgressView("Wczytuję podsumowanie...")
-                            .frame(maxWidth: .infinity, minHeight: 160)
-                    }
+                    .padding()
+                    .padding(.bottom, 96)
                 }
-                .padding()
+
+                Button(action: { openBestScanner() }) {
+                    Label("Dodaj paragon", systemImage: "camera.fill")
+                        .font(.title2)
+                        .bold()
+                        .frame(maxWidth: .infinity, minHeight: 62)
+                }
+                .buttonStyle(.borderedProminent)
+                .padding(.horizontal)
+                .padding(.bottom, 10)
+                .background(.thinMaterial)
             }
             .navigationTitle("Podsumowanie")
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Menu("Dodaj") {
+                    Menu("Więcej") {
                         if DocumentScannerView.isAvailable {
                             Button("Skan dokumentu") { openBestScanner() }
                         }
