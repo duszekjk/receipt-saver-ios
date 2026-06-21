@@ -9,7 +9,7 @@ struct ReceiptListView: View {
             VStack(alignment: .leading, spacing: 10) {
                 Text(receipt.merchant_name.isEmpty ? "Nieznany sklep" : receipt.merchant_name)
                     .font(.title2)
-                    .bold()
+                    .fontWeight(.bold)
                 Text("Suma: \(receipt.total_amount ?? "?") \(receipt.currency)")
                     .font(.title3)
                 if let saved = receipt.discount_total {
