@@ -63,7 +63,7 @@ struct DashboardView: View {
                 Button(action: { openBestScanner() }) {
                     Label("Dodaj paragon", systemImage: "camera.fill")
                         .font(.title2)
-                        .bold()
+                        .fontWeight(.bold)
                         .frame(maxWidth: .infinity, minHeight: 62)
                 }
                 .buttonStyle(.borderedProminent)
@@ -137,7 +137,7 @@ struct DashboardView: View {
     private func sectionHeader(_ title: String) -> some View {
         Text(title)
             .font(.title2)
-            .bold()
+            .fontWeight(.bold)
             .padding(.top, 4)
     }
 
@@ -232,7 +232,7 @@ struct StatCard: View {
                 .foregroundColor(.secondary)
             Text(value)
                 .font(.title2)
-                .bold()
+                .fontWeight(.bold)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding()
