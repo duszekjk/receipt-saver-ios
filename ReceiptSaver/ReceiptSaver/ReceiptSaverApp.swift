@@ -7,7 +7,7 @@ struct ReceiptSaverApp: App {
     var body: some Scene {
         WindowGroup {
             if isLoggedIn {
-                DashboardView()
+                MainTabView()
             } else {
                 QRLoginView(isLoggedIn: $isLoggedIn)
             }
