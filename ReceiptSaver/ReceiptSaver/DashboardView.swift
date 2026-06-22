@@ -46,7 +46,6 @@ struct DashboardView: View {
                         if let dashboard = dashboard {
                             Text(period == "month" ? "Podsumowanie za \(monthDisplay(dashboard.selected_month))" : timelineTitle())
                                 .font(.title2)
-                                .fontWeight(.bold)
 
                             cards(dashboard.cards)
 
@@ -83,7 +82,6 @@ struct DashboardView: View {
                 Button(action: { openBestScanner() }) {
                     Label("Dodaj paragon", systemImage: "camera.fill")
                         .font(.title2)
-                        .fontWeight(.semibold)
                         .frame(maxWidth: .infinity, minHeight: 62)
                 }
                 .buttonStyle(.borderedProminent)
@@ -177,7 +175,6 @@ struct DashboardView: View {
     private func sectionHeader(_ title: String) -> some View {
         Text(title)
             .font(.title2)
-            .fontWeight(.bold)
             .padding(.top, 4)
     }
 
@@ -315,7 +312,6 @@ struct StatCard: View {
                 .foregroundColor(.secondary)
             Text(value)
                 .font(.title2)
-                .fontWeight(.bold)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding()
@@ -371,7 +367,6 @@ struct BarList: View {
                                     Spacer()
                                     Text("Pokaż")
                                         .font(.caption)
-                                        .fontWeight(.semibold)
                                         .foregroundColor(accent)
                                 }
                             }
