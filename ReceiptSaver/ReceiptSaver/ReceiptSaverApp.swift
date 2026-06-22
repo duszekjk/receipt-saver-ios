@@ -8,8 +8,10 @@ struct ReceiptSaverApp: App {
         WindowGroup {
             if isLoggedIn {
                 MainTabView()
+                    .tint(Color(red: 0.00, green: 0.36, blue: 0.20))
             } else {
                 QRLoginView(isLoggedIn: $isLoggedIn)
+                    .tint(Color(red: 0.00, green: 0.36, blue: 0.20))
             }
         }
     }
