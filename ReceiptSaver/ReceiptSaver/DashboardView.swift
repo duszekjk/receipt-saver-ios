@@ -14,6 +14,9 @@ struct DashboardView: View {
     @State private var uploadStatus = ""
     @State private var queueStatus = ""
     @State private var queuePendingCount = 0
+    @State private var queueTotalCount = 0
+    @State private var queueProcessedCount = 0
+    @State private var queueProgress = 0.0
     @State private var selectedSubcategory: DashboardBarRow?
     @State private var subcategoryDetails: SubcategoryDetails?
     @State private var detailsError = ""
@@ -39,12 +42,19 @@ struct DashboardView: View {
                         }
 
                         if !statusText.isEmpty {
-                            Text(statusText)
-                                .font(.body)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding()
-                                .background(Color.secondary.opacity(0.10))
-                                .clipShape(RoundedRectangle(cornerRadius: 14))
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text(statusText).font(.body)
+                                if queueTotalCount > 0 && queueProgress < 1.0 {
+                                    ProgressView(value: queueProgress)
+                                    Text("\(queueProcessedCount) z \(queueTotalCount) paragonów")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding()
+                            .background(Color.secondary.opacity(0.10))
+                            .clipShape(RoundedRectangle(cornerRadius: 14))
                         }
 
                         if let dashboard = dashboard {
@@ -134,15 +144,18 @@ struct DashboardView: View {
     private func syncQueueStatus() {
         queueStatus = uploadQueue.statusText
         queuePendingCount = uploadQueue.pendingCount
+        queueTotalCount = uploadQueue.totalCount
+        queueProcessedCount = uploadQueue.processedCount
+        queueProgress = uploadQueue.progress
     }
 
     private func processQueueIfNeeded() async {
-        await uploadQueue.resumeIfNeeded(onUploaded: { await loadDashboard() })
+        await uploadQueue.resumeIfNeeded(onProgress: { syncQueueStatus() }, onUploaded: { await loadDashboard() })
         syncQueueStatus()
     }
 
     private func processQueue() async {
-        await uploadQueue.process(onUploaded: { await loadDashboard() })
+        await uploadQueue.process(onProgress: { syncQueueStatus() }, onUploaded: { await loadDashboard() })
         syncQueueStatus()
     }
 
@@ -206,9 +219,13 @@ struct DashboardView: View {
     }
 
     private func displayLabel(_ value: String) -> String {
+        if value.range(of: "[ąćęłńóśźżĄĆĘŁŃÓŚŹŻ]", options: .regularExpression) != nil { return value }
         let key = value.lowercased().replacingOccurrences(of: " ", with: "_").replacingOccurrences(of: "-", with: "_")
-        let labels = ["inne": "Inne", "paliwo": "Paliwo", "transport": "Transport", "zywnosc": "Żywność", "jedzenie": "Jedzenie", "zdrowie": "Zdrowie", "wizyta_u_lekarza": "Wizyta u lekarza", "leki": "Leki", "alkohol": "Alkohol", "alkohole": "Alkohole", "piwo": "Piwo", "wino": "Wino", "wodka": "Wódka", "hazard": "Hazard", "zaklady_bukmacherskie": "Zakłady bukmacherskie", "darowizny": "Darowizny", "dom": "Dom", "media": "Media", "telefon": "Telefon", "internet": "Internet", "restauracje": "Restauracje", "rozrywka": "Rozrywka", "ubrania": "Ubrania", "oszczednosci": "Oszczędności"]
-        return labels[key] ?? value.replacingOccurrences(of: "_", with: " ").capitalized
+        let labels = [
+            "inne": "Inne", "paliwo": "Paliwo", "transport": "Transport", "zywnosc": "Żywność", "jedzenie": "Jedzenie", "zdrowie": "Zdrowie", "wizyta_u_lekarza": "Wizyta u lekarza", "leki": "Leki", "alkohol": "Alkohol", "alkohole": "Alkohole", "piwo": "Piwo", "wino": "Wino", "wodka": "Wódka", "mocny_alkohol": "Mocny alkohol", "hazard": "Hazard", "zaklady_bukmacherskie": "Zakłady bukmacherskie", "zaklady_sportowe": "Zakłady sportowe", "darowizny": "Darowizny", "dom": "Dom", "media": "Media", "telefon": "Telefon", "internet": "Internet", "restauracje": "Restauracje", "rozrywka": "Rozrywka", "ubrania": "Ubrania", "oszczednosci": "Oszczędności", "miod": "Miód", "roze": "Róże", "roza": "Róża", "kwiaty": "Kwiaty", "nabial": "Nabiał", "mieso": "Mięso", "wedliny": "Wędliny", "mrozonki": "Mrożonki", "slodycze": "Słodycze", "srodki_czystosci": "Środki czystości", "papier_toaletowy": "Papier toaletowy", "odziez": "Odzież", "ksiazki": "Książki", "rekodzielo": "Rękodzieło"
+        ]
+        if let label = labels[key] { return label }
+        return value.replacingOccurrences(of: "_", with: " ").capitalized
     }
 
     private func maxSpent(_ rows: [DashboardBarRow]) -> Double { max(rows.map(\.spent).max() ?? 1, 1) }
