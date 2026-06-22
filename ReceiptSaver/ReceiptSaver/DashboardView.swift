@@ -12,10 +12,12 @@ struct DashboardView: View {
     @State private var showLibraryPicker = false
     @State private var pickerSource: ImagePicker.Source = .camera
     @State private var uploadStatus = ""
+    @State private var queueStatus = ""
+    @State private var queuePendingCount = 0
     @State private var selectedSubcategory: DashboardBarRow?
     @State private var subcategoryDetails: SubcategoryDetails?
     @State private var detailsError = ""
-    @StateObject private var uploadQueue = ReceiptUploadQueue()
+    @State private var uploadQueue = ReceiptUploadQueue()
 
     let periods = [("month", "Miesiąc"), ("last30", "30 dni"), ("last90", "90 dni")]
     let limits = [5, 10, 15, 20]
@@ -105,7 +107,8 @@ struct DashboardView: View {
             .sheet(isPresented: $showLibraryPicker) {
                 MultiPhotoPicker(selectionLimit: 100) { images in
                     uploadQueue.enqueue(images)
-                    Task { await uploadQueue.process(onUploaded: { await loadDashboard() }) }
+                    syncQueueStatus()
+                    Task { await processQueue() }
                 }
             }
             .sheet(item: $selectedSubcategory) { row in
@@ -113,7 +116,8 @@ struct DashboardView: View {
             }
             .task {
                 await loadDashboard()
-                await uploadQueue.resumeIfNeeded(onUploaded: { await loadDashboard() })
+                syncQueueStatus()
+                await processQueueIfNeeded()
             }
         }
         .navigationViewStyle(.stack)
@@ -122,9 +126,24 @@ struct DashboardView: View {
     private var statusText: String {
         var parts: [String] = []
         if !uploadStatus.isEmpty { parts.append(uploadStatus) }
-        if !uploadQueue.statusText.isEmpty { parts.append(uploadQueue.statusText) }
-        if uploadQueue.pendingCount > 0 { parts.append("Kolejka importu: \(uploadQueue.pendingCount).") }
+        if !queueStatus.isEmpty { parts.append(queueStatus) }
+        if queuePendingCount > 0 { parts.append("Kolejka importu: \(queuePendingCount).") }
         return parts.joined(separator: "\n")
+    }
+
+    private func syncQueueStatus() {
+        queueStatus = uploadQueue.statusText
+        queuePendingCount = uploadQueue.pendingCount
+    }
+
+    private func processQueueIfNeeded() async {
+        await uploadQueue.resumeIfNeeded(onUploaded: { await loadDashboard() })
+        syncQueueStatus()
+    }
+
+    private func processQueue() async {
+        await uploadQueue.process(onUploaded: { await loadDashboard() })
+        syncQueueStatus()
     }
 
     private func compactMonthPicker(_ months: [String]) -> some View {
