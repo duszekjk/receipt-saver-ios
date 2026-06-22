@@ -63,7 +63,6 @@ struct DashboardView: View {
                 Button(action: { openBestScanner() }) {
                     Label("Dodaj paragon", systemImage: "camera.fill")
                         .font(.title2)
-                        .fontWeight(.bold)
                         .frame(maxWidth: .infinity, minHeight: 62)
                 }
                 .buttonStyle(.borderedProminent)
