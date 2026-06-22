@@ -110,21 +110,6 @@ struct DashboardStats: Codable {
     }
 }
 
-struct SubcategoryDetails: Codable {
-    let month: String
-    let subcategory: String
-    let items: [SubcategoryDetailItem]
-}
-
-struct SubcategoryDetailItem: Identifiable, Codable {
-    var id: String { "\(source)-\(merchant)-\(name)-\(spent)-\(count)" }
-    let name: String
-    let merchant: String
-    let spent: Double
-    let count: Int
-    let source: String
-}
-
 struct BankTransaction: Identifiable, Codable {
     let id: Int
     let bank: String
