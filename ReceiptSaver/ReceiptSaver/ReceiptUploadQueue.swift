@@ -2,10 +2,10 @@ import Foundation
 import UIKit
 
 @MainActor
-final class ReceiptUploadQueue: ObservableObject {
-    @Published var pendingCount: Int = 0
-    @Published var isProcessing = false
-    @Published var statusText = ""
+final class ReceiptUploadQueue {
+    var pendingCount: Int = 0
+    var isProcessing = false
+    var statusText = ""
 
     private let directoryName = "ReceiptUploadQueue"
 
