@@ -110,6 +110,11 @@ struct DashboardStats: Codable {
     }
 }
 
+struct BankImportResult: Codable {
+    let created: Int
+    let classified: Int?
+}
+
 struct BankTransaction: Identifiable, Codable {
     let id: Int
     let bank: String
