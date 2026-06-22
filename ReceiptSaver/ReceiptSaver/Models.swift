@@ -75,15 +75,35 @@ struct DashboardBarRow: Identifiable, Codable {
     let count: Int
 }
 
+typealias DashboardTimelineRow = DashboardBarRow
+
 struct DashboardStats: Codable {
     let period: String
     let category_filter: String
     let cards: DashboardCards
     let available_categories: [String]
+    let timeline: [DashboardTimelineRow]
     let categories: [DashboardBarRow]
     let subcategories: [DashboardBarRow]
     let products: [DashboardBarRow]
     let stores: [DashboardBarRow]
+
+    enum CodingKeys: String, CodingKey {
+        case period, category_filter, cards, available_categories, timeline, categories, subcategories, products, stores
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        period = try container.decode(String.self, forKey: .period)
+        category_filter = try container.decode(String.self, forKey: .category_filter)
+        cards = try container.decode(DashboardCards.self, forKey: .cards)
+        available_categories = try container.decode([String].self, forKey: .available_categories)
+        timeline = try container.decodeIfPresent([DashboardTimelineRow].self, forKey: .timeline) ?? []
+        categories = try container.decode([DashboardBarRow].self, forKey: .categories)
+        subcategories = try container.decode([DashboardBarRow].self, forKey: .subcategories)
+        products = try container.decode([DashboardBarRow].self, forKey: .products)
+        stores = try container.decode([DashboardBarRow].self, forKey: .stores)
+    }
 }
 
 struct BankTransaction: Identifiable, Codable {
