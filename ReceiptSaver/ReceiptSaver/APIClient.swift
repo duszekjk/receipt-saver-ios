@@ -39,13 +39,16 @@ final class APIClient {
         return try JSONDecoder().decode(MobileProfile.self, from: data)
     }
 
-    func dashboard(period: String, category: String, limit: Int) async throws -> DashboardStats {
+    func dashboard(period: String, month: String, category: String, limit: Int) async throws -> DashboardStats {
         let url = baseURL.appendingPathComponent("dashboard/")
         var components = URLComponents(url: url, resolvingAgainstBaseURL: false)!
         var items = [
             URLQueryItem(name: "period", value: period),
             URLQueryItem(name: "limit", value: String(limit))
         ]
+        if period == "month", !month.isEmpty {
+            items.append(URLQueryItem(name: "month", value: month))
+        }
         if !category.isEmpty {
             items.append(URLQueryItem(name: "category", value: category))
         }
