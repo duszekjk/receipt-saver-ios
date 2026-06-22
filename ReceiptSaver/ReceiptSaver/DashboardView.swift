@@ -3,6 +3,7 @@ import AVFoundation
 
 struct DashboardView: View {
     @State private var period = "month"
+    @State private var selectedMonth = ""
     @State private var categoryFilter = ""
     @State private var limit = 10
     @State private var dashboard: DashboardStats?
@@ -11,7 +12,7 @@ struct DashboardView: View {
     @State private var pickerSource: ImagePicker.Source = .camera
     @State private var uploadStatus = ""
 
-    let periods = [("month", "Miesiące"), ("quarter", "Kwartały"), ("year", "Lata"), ("last30", "30 dni"), ("last90", "90 dni")]
+    let periods = [("month", "Miesiac"), ("last30", "30 dni"), ("last90", "90 dni")]
     let limits = [5, 10, 15, 20]
 
     var body: some View {
@@ -19,11 +20,15 @@ struct DashboardView: View {
             ZStack(alignment: .bottom) {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {
-                        Picker("Okres", selection: $period) {
+                        Picker("Zakres", selection: $period) {
                             ForEach(periods, id: \.0) { key, label in Text(label).tag(key) }
                         }
                         .pickerStyle(.segmented)
                         .onChange(of: period) { _ in Task { await loadDashboard() } }
+
+                        if let dashboard = dashboard, period == "month" {
+                            monthPicker(dashboard.available_months)
+                        }
 
                         if !uploadStatus.isEmpty {
                             Text(uploadStatus)
@@ -36,28 +41,32 @@ struct DashboardView: View {
                         }
 
                         if let dashboard = dashboard {
+                            Text(period == "month" ? "Podsumowanie za \(monthDisplay(dashboard.selected_month))" : timelineTitle())
+                                .font(.title2)
+                                .fontWeight(.bold)
+
                             cards(dashboard.cards)
 
-                            if !dashboard.timeline.isEmpty {
-                                sectionHeader(timelineTitle())
-                                BarList(rows: dashboard.timeline, maxValue: maxSpent(dashboard.timeline))
-                            }
-
-                            sectionHeader(categoryFilter.isEmpty ? "Największe subkategorie" : "Subkategorie: \(categoryFilter)")
+                            sectionHeader(categoryFilter.isEmpty ? "Najwieksze subkategorie" : "Subkategorie: \(categoryFilter)")
                             BarList(rows: dashboard.subcategories, maxValue: maxSpent(dashboard.subcategories))
 
                             filterControls(dashboard.available_categories)
 
-                            sectionHeader("Główne kategorie")
+                            sectionHeader("Glowne kategorie")
                             BarList(rows: dashboard.categories, maxValue: maxSpent(dashboard.categories))
 
-                            sectionHeader("Najdroższe produkty")
+                            sectionHeader("Najdrozsze produkty")
                             BarList(rows: dashboard.products, maxValue: maxSpent(dashboard.products))
 
                             sectionHeader("Sklepy i odbiorcy")
                             BarList(rows: dashboard.stores, maxValue: maxSpent(dashboard.stores))
+
+                            if period != "month", !dashboard.timeline.isEmpty {
+                                sectionHeader(timelineTitle())
+                                BarList(rows: dashboard.timeline, maxValue: maxSpent(dashboard.timeline))
+                            }
                         } else {
-                            ProgressView("Wczytuję podsumowanie...")
+                            ProgressView("Wczytuje podsumowanie...")
                                 .frame(maxWidth: .infinity, minHeight: 160)
                         }
                     }
@@ -75,10 +84,10 @@ struct DashboardView: View {
                 .padding(.bottom, 10)
                 .background(.thinMaterial)
             }
-            .navigationTitle("Budżet")
+            .navigationTitle("Budzet")
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Menu("Więcej") {
+                    Menu("Wiecej") {
                         if DocumentScannerView.isAvailable {
                             Button("Skan dokumentu") { openBestScanner() }
                         }
@@ -103,10 +112,27 @@ struct DashboardView: View {
         .navigationViewStyle(.stack)
     }
 
+    private func monthPicker(_ months: [String]) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Miesiac rozliczenia")
+                .font(.headline)
+            Picker("Miesiac", selection: $selectedMonth) {
+                ForEach(months, id: \.self) { month in
+                    Text(monthDisplay(month)).tag(month)
+                }
+            }
+            .pickerStyle(.menu)
+            .onChange(of: selectedMonth) { _ in Task { await loadDashboard() } }
+        }
+        .padding()
+        .background(Color.secondary.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
+
     private func cards(_ cards: DashboardCards) -> some View {
         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-            StatCard(title: "Wydatki", value: "\(money(cards.spent)) zł")
-            StatCard(title: "Oszczędzono", value: "\(money(cards.saved)) zł")
+            StatCard(title: "Wydatki", value: "\(money(cards.spent)) zl")
+            StatCard(title: "Oszczedzono", value: "\(money(cards.saved)) zl")
             StatCard(title: "Pozycje", value: "\(cards.receipt_count)")
             StatCard(title: "Sklepy/odbiorcy", value: "\(cards.store_count)")
         }
@@ -147,12 +173,17 @@ struct DashboardView: View {
 
     private func timelineTitle() -> String {
         switch period {
-        case "quarter": return "Wydatki według kwartałów"
-        case "year": return "Wydatki według lat"
         case "last30": return "Ostatnie 30 dni"
         case "last90": return "Ostatnie 90 dni"
-        default: return "Wydatki według miesięcy"
+        default: return "Wydatki wedlug miesiecy"
         }
+    }
+
+    private func monthDisplay(_ month: String) -> String {
+        let parts = month.split(separator: "-")
+        guard parts.count == 2, let number = Int(parts[1]) else { return month }
+        let names = ["", "Styczen", "Luty", "Marzec", "Kwiecien", "Maj", "Czerwiec", "Lipiec", "Sierpien", "Wrzesien", "Pazdziernik", "Listopad", "Grudzien"]
+        return number >= 1 && number <= 12 ? "\(names[number]) \(parts[0])" : month
     }
 
     private func maxSpent(_ rows: [DashboardBarRow]) -> Double {
@@ -166,7 +197,7 @@ struct DashboardView: View {
     private func openBestScanner() {
         requestCameraAccess { granted in
             guard granted else {
-                uploadStatus = "Brak dostępu do aparatu. Włącz dostęp w Ustawieniach."
+                uploadStatus = "Brak dostepu do aparatu. Wlacz dostep w Ustawieniach."
                 return
             }
             if DocumentScannerView.isAvailable {
@@ -181,7 +212,7 @@ struct DashboardView: View {
     private func openCameraPicker() {
         requestCameraAccess { granted in
             guard granted else {
-                uploadStatus = "Brak dostępu do aparatu. Włącz dostęp w Ustawieniach."
+                uploadStatus = "Brak dostepu do aparatu. Wlacz dostep w Ustawieniach."
                 return
             }
             pickerSource = .camera
@@ -204,32 +235,36 @@ struct DashboardView: View {
 
     private func loadDashboard() async {
         do {
-            dashboard = try await APIClient.shared.dashboard(period: period, category: categoryFilter, limit: limit)
+            let result = try await APIClient.shared.dashboard(period: period, month: selectedMonth, category: categoryFilter, limit: limit)
+            dashboard = result
+            if selectedMonth.isEmpty || !result.available_months.contains(selectedMonth) {
+                selectedMonth = result.selected_month
+            }
         } catch {
-            uploadStatus = "Nie udało się pobrać dashboardu: \(errorMessage(error))"
+            uploadStatus = "Nie udalo sie pobrac dashboardu: \(errorMessage(error))"
         }
     }
 
     private func upload(_ image: UIImage) async {
-        uploadStatus = "Wysyłam paragon..."
+        uploadStatus = "Wysylam paragon..."
         do {
             _ = try await APIClient.shared.uploadReceipt(image: image)
             uploadStatus = "Paragon dodany"
             await loadDashboard()
         } catch {
-            uploadStatus = "Błąd wysyłania paragonu: \(errorMessage(error))"
+            uploadStatus = "Blad wysylania paragonu: \(errorMessage(error))"
         }
     }
 
     private func errorMessage(_ error: Error) -> String {
         if let apiError = error as? APIError {
-            return apiError.errorDescription ?? "Błąd API"
+            return apiError.errorDescription ?? "Blad API"
         }
         if let urlError = error as? URLError {
             return "URL \(urlError.code.rawValue): \(urlError.localizedDescription)"
         }
         if let decodingError = error as? DecodingError {
-            return "Błąd JSON: \(decodingError)"
+            return "Blad JSON: \(decodingError)"
         }
         return error.localizedDescription
     }
@@ -274,7 +309,7 @@ struct BarList: View {
                             Text(row.name.isEmpty ? "inne" : row.name)
                                 .font(.headline)
                             Spacer()
-                            Text(String(format: "%.2f zł", row.spent))
+                            Text(String(format: "%.2f zl", row.spent))
                                 .font(.headline)
                         }
                         GeometryReader { geometry in
