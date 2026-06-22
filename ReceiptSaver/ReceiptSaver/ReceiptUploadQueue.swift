@@ -4,6 +4,8 @@ import UIKit
 @MainActor
 final class ReceiptUploadQueue {
     var pendingCount: Int = 0
+    var totalCount: Int = 0
+    var processedCount: Int = 0
     var isProcessing = false
     var statusText = ""
 
@@ -11,6 +13,12 @@ final class ReceiptUploadQueue {
 
     init() {
         refreshPendingCount()
+        totalCount = pendingCount
+    }
+
+    var progress: Double {
+        guard totalCount > 0 else { return 0 }
+        return min(1, max(0, Double(processedCount) / Double(totalCount)))
     }
 
     func enqueue(_ images: [UIImage]) {
@@ -26,35 +34,53 @@ final class ReceiptUploadQueue {
         }
 
         refreshPendingCount()
-        statusText = "Dodano do kolejki: \(images.count). Pozostało: \(pendingCount)."
+        totalCount = pendingCount
+        processedCount = 0
+        statusText = "Dodano do kolejki: \(images.count)."
     }
 
-    func resumeIfNeeded(onUploaded: @escaping () async -> Void) async {
+    func resumeIfNeeded(onProgress: @escaping () -> Void, onUploaded: @escaping () async -> Void) async {
         refreshPendingCount()
+        totalCount = pendingCount
+        processedCount = 0
+        onProgress()
         guard pendingCount > 0 else { return }
-        await process(onUploaded: onUploaded)
+        await process(onProgress: onProgress, onUploaded: onUploaded)
     }
 
-    func process(onUploaded: @escaping () async -> Void) async {
+    func process(onProgress: @escaping () -> Void, onUploaded: @escaping () async -> Void) async {
         guard !isProcessing else { return }
         isProcessing = true
-        defer { isProcessing = false }
+        defer {
+            isProcessing = false
+            onProgress()
+        }
+
+        refreshPendingCount()
+        if totalCount == 0 { totalCount = pendingCount }
+        onProgress()
 
         while let next = nextFile() {
             refreshPendingCount()
-            statusText = "Wysyłam paragon z kolejki. Pozostało: \(pendingCount)."
+            let current = min(totalCount, processedCount + 1)
+            statusText = "Wysyłam paragon \(current) z \(max(totalCount, current))."
+            onProgress()
 
             guard let image = UIImage(contentsOfFile: next.path) else {
                 try? FileManager.default.removeItem(at: next)
+                processedCount += 1
                 refreshPendingCount()
+                onProgress()
                 continue
             }
 
             do {
                 _ = try await APIClient.shared.uploadReceipt(image: image)
                 try? FileManager.default.removeItem(at: next)
+                processedCount += 1
                 refreshPendingCount()
                 statusText = pendingCount == 0 ? "Import z biblioteki zakończony." : "Paragon dodany. Czekam 2 sekundy przed następnym."
+                onProgress()
                 await onUploaded()
                 if pendingCount > 0 {
                     try? await Task.sleep(nanoseconds: 2_000_000_000)
@@ -62,6 +88,7 @@ final class ReceiptUploadQueue {
             } catch {
                 refreshPendingCount()
                 statusText = "Przerwano import. Błąd: \(error.localizedDescription). Kolejka zostaje zapisana."
+                onProgress()
                 return
             }
         }
