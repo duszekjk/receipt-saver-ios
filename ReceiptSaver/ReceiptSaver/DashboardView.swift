@@ -9,18 +9,11 @@ struct DashboardView: View {
     @State private var dashboard: DashboardStats?
     @State private var showPicker = false
     @State private var showScanner = false
-    @State private var showLibraryPicker = false
     @State private var pickerSource: ImagePicker.Source = .camera
     @State private var uploadStatus = ""
-    @State private var queueStatus = ""
-    @State private var queuePendingCount = 0
-    @State private var queueTotalCount = 0
-    @State private var queueProcessedCount = 0
-    @State private var queueProgress = 0.0
     @State private var selectedSubcategory: DashboardBarRow?
     @State private var subcategoryDetails: SubcategoryDetails?
     @State private var detailsError = ""
-    @State private var uploadQueue = ReceiptUploadQueue()
 
     let periods = [("month", "Miesiąc"), ("last30", "30 dni"), ("last90", "90 dni")]
     let limits = [5, 10, 15, 20]
@@ -29,7 +22,7 @@ struct DashboardView: View {
     var body: some View {
         NavigationView {
             ZStack(alignment: .bottom) {
-                ScrollView {
+                ScrollView(.vertical, showsIndicators: true) {
                     VStack(alignment: .leading, spacing: 16) {
                         Picker("Zakres", selection: $period) {
                             ForEach(periods, id: \.0) { key, label in Text(label).tag(key) }
@@ -41,25 +34,20 @@ struct DashboardView: View {
                             compactMonthPicker(dashboard.available_months)
                         }
 
-                        if !statusText.isEmpty {
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text(statusText).font(.body)
-                                if queueTotalCount > 0 && queueProgress < 1.0 {
-                                    ProgressView(value: queueProgress)
-                                    Text("\(queueProcessedCount) z \(queueTotalCount) paragonów")
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                }
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding()
-                            .background(Color.secondary.opacity(0.10))
-                            .clipShape(RoundedRectangle(cornerRadius: 14))
+                        if !uploadStatus.isEmpty {
+                            Text(uploadStatus)
+                                .font(.body)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding()
+                                .background(Color.secondary.opacity(0.10))
+                                .clipShape(RoundedRectangle(cornerRadius: 14))
                         }
 
                         if let dashboard = dashboard {
                             Text(period == "month" ? "Podsumowanie za \(monthDisplay(dashboard.selected_month))" : timelineTitle())
                                 .font(.title2)
+                                .fixedSize(horizontal: false, vertical: true)
                             cards(dashboard.cards)
                             sectionHeader(categoryFilter.isEmpty ? "Największe subkategorie" : "Subkategorie: \(displayLabel(categoryFilter))")
                             BarList(rows: dashboard.subcategories, maxValue: maxSpent(dashboard.subcategories), displayName: displayLabel, accent: accent) { row in
@@ -82,27 +70,18 @@ struct DashboardView: View {
                                 .frame(maxWidth: .infinity, minHeight: 160)
                         }
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .padding()
-                    .padding(.bottom, 150)
+                    .padding(.bottom, 96)
                 }
 
-                VStack(spacing: 8) {
-                    Button(action: { openBestScanner() }) {
-                        Label("Dodaj paragon", systemImage: "camera.fill")
-                            .font(.title2)
-                            .frame(maxWidth: .infinity, minHeight: 58)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(accent)
-
-                    Button(action: { showLibraryPicker = true }) {
-                        Label("Import z biblioteki", systemImage: "photo.on.rectangle")
-                            .font(.body)
-                            .frame(maxWidth: .infinity, minHeight: 44)
-                    }
-                    .buttonStyle(.bordered)
-                    .tint(accent)
+                Button(action: { openBestScanner() }) {
+                    Label("Dodaj paragon", systemImage: "camera.fill")
+                        .font(.title2)
+                        .frame(maxWidth: .infinity, minHeight: 58)
                 }
+                .buttonStyle(.borderedProminent)
+                .tint(accent)
                 .padding(.horizontal)
                 .padding(.bottom, 10)
                 .background(.thinMaterial)
@@ -114,61 +93,25 @@ struct DashboardView: View {
             .sheet(isPresented: $showScanner) {
                 DocumentScannerView(onImage: { image in Task { await upload(image) } }, onCancel: {})
             }
-            .sheet(isPresented: $showLibraryPicker) {
-                MultiPhotoPicker(selectionLimit: 100) { images in
-                    uploadQueue.enqueue(images)
-                    syncQueueStatus()
-                    Task { await processQueue() }
-                }
-            }
             .sheet(item: $selectedSubcategory) { row in
                 SubcategoryDetailsView(title: displayLabel(row.name), details: subcategoryDetails, error: detailsError, displayName: displayLabel)
             }
-            .task {
-                await loadDashboard()
-                syncQueueStatus()
-                await processQueueIfNeeded()
-            }
+            .task { await loadDashboard() }
         }
         .navigationViewStyle(.stack)
-    }
-
-    private var statusText: String {
-        var parts: [String] = []
-        if !uploadStatus.isEmpty { parts.append(uploadStatus) }
-        if !queueStatus.isEmpty { parts.append(queueStatus) }
-        if queuePendingCount > 0 { parts.append("Kolejka importu: \(queuePendingCount).") }
-        return parts.joined(separator: "\n")
-    }
-
-    private func syncQueueStatus() {
-        queueStatus = uploadQueue.statusText
-        queuePendingCount = uploadQueue.pendingCount
-        queueTotalCount = uploadQueue.totalCount
-        queueProcessedCount = uploadQueue.processedCount
-        queueProgress = uploadQueue.progress
-    }
-
-    private func processQueueIfNeeded() async {
-        await uploadQueue.resumeIfNeeded(onProgress: { syncQueueStatus() }, onUploaded: { await loadDashboard() })
-        syncQueueStatus()
-    }
-
-    private func processQueue() async {
-        await uploadQueue.process(onProgress: { syncQueueStatus() }, onUploaded: { await loadDashboard() })
-        syncQueueStatus()
     }
 
     private func compactMonthPicker(_ months: [String]) -> some View {
         HStack(spacing: 12) {
             Text("Miesiąc").font(.headline)
-            Spacer()
+            Spacer(minLength: 8)
             Picker("Miesiąc", selection: $selectedMonth) {
                 ForEach(months, id: \.self) { month in Text(monthDisplay(month)).tag(month) }
             }
             .pickerStyle(.menu)
             .onChange(of: selectedMonth) { _ in Task { await loadDashboard() } }
         }
+        .frame(maxWidth: .infinity)
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
         .background(Color.secondary.opacity(0.08))
@@ -182,6 +125,7 @@ struct DashboardView: View {
             StatCard(title: "Pozycje", value: "\(cards.receipt_count)")
             StatCard(title: "Sklepy/odbiorcy", value: "\(cards.store_count)")
         }
+        .frame(maxWidth: .infinity)
     }
 
     private func filterControls(_ categories: [String]) -> some View {
@@ -189,26 +133,33 @@ struct DashboardView: View {
             Text("Filtry").font(.headline)
             HStack {
                 Text("Kategoria")
-                Spacer()
+                Spacer(minLength: 8)
                 Picker("Kategoria", selection: $categoryFilter) {
                     Text("Wszystkie").tag("")
                     ForEach(categories, id: \.self) { category in Text(displayLabel(category)).tag(category) }
                 }
                 .pickerStyle(.menu)
-                .onChange(of: categoryFilter) { _ in Task { await loadDashboard() } }
             }
+            .onChange(of: categoryFilter) { _ in Task { await loadDashboard() } }
             Picker("Liczba pozycji", selection: $limit) {
                 ForEach(limits, id: \.self) { value in Text("Top \(value)").tag(value) }
             }
             .pickerStyle(.segmented)
             .onChange(of: limit) { _ in Task { await loadDashboard() } }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding()
         .background(Color.secondary.opacity(0.08))
         .clipShape(RoundedRectangle(cornerRadius: 14))
     }
 
-    private func sectionHeader(_ title: String) -> some View { Text(title).font(.title2).padding(.top, 4) }
+    private func sectionHeader(_ title: String) -> some View {
+        Text(title)
+            .font(.title2)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.top, 4)
+    }
+
     private func timelineTitle() -> String { period == "last30" ? "Ostatnie 30 dni" : period == "last90" ? "Ostatnie 90 dni" : "Wydatki według miesięcy" }
 
     private func monthDisplay(_ month: String) -> String {
@@ -279,8 +230,14 @@ struct StatCard: View {
     let title: String
     let value: String
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) { Text(title).font(.headline).foregroundColor(.secondary); Text(value).font(.title2) }
-            .frame(maxWidth: .infinity, alignment: .leading).padding().background(Color.secondary.opacity(0.08)).clipShape(RoundedRectangle(cornerRadius: 14))
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title).font(.headline).foregroundColor(.secondary).lineLimit(2)
+            Text(value).font(.title2).lineLimit(2).minimumScaleFactor(0.75)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding()
+        .background(Color.secondary.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
     }
 }
 
@@ -292,18 +249,52 @@ struct BarList: View {
     var onTap: ((DashboardBarRow) -> Void)? = nil
     var body: some View {
         VStack(spacing: 12) {
-            if rows.isEmpty { Text("Brak danych").frame(maxWidth: .infinity, alignment: .leading).padding().background(Color.secondary.opacity(0.06)).clipShape(RoundedRectangle(cornerRadius: 12)) }
-            else { ForEach(rows) { row in Button(action: { onTap?(row) }) { bar(row) }.buttonStyle(.plain).disabled(onTap == nil) } }
+            if rows.isEmpty {
+                Text("Brak danych")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding()
+                    .background(Color.secondary.opacity(0.06))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+            } else {
+                ForEach(rows) { row in
+                    Button(action: { onTap?(row) }) { bar(row) }
+                        .buttonStyle(.plain)
+                        .disabled(onTap == nil)
+                }
+            }
         }
+        .frame(maxWidth: .infinity)
     }
     private func bar(_ row: DashboardBarRow) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack { Text(displayName(row.name)).font(.headline).foregroundColor(.primary); Spacer(); Text(String(format: "%.2f zł", row.spent)).font(.headline).foregroundColor(.primary) }
+            HStack(alignment: .top, spacing: 8) {
+                Text(displayName(row.name))
+                    .font(.headline)
+                    .foregroundColor(.primary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 8)
+                Text(String(format: "%.2f zł", row.spent))
+                    .font(.headline)
+                    .foregroundColor(.primary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+            }
             GeometryReader { geometry in
-                ZStack(alignment: .leading) { RoundedRectangle(cornerRadius: 6).fill(Color.secondary.opacity(0.15)).frame(height: 12); RoundedRectangle(cornerRadius: 6).fill(accent).frame(width: max(8, geometry.size.width * CGFloat(row.spent / maxValue)), height: 12) }
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 6).fill(Color.secondary.opacity(0.15)).frame(height: 12)
+                    RoundedRectangle(cornerRadius: 6).fill(accent).frame(width: min(geometry.size.width, max(8, geometry.size.width * CGFloat(row.spent / maxValue))), height: 12)
+                }
             }.frame(height: 12)
-            HStack { Text("\(row.count) pozycji").font(.caption).foregroundColor(.secondary); if onTap != nil { Spacer(); Text("Pokaż").font(.caption).foregroundColor(accent) } }
-        }.padding().background(Color.secondary.opacity(0.06)).clipShape(RoundedRectangle(cornerRadius: 12))
+            HStack {
+                Text("\(row.count) pozycji").font(.caption).foregroundColor(.secondary)
+                if onTap != nil { Spacer(); Text("Pokaż").font(.caption).foregroundColor(accent) }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding()
+        .background(Color.secondary.opacity(0.06))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 }
 
