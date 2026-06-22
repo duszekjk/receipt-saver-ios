@@ -62,6 +62,22 @@ final class APIClient {
         return try JSONDecoder().decode(DashboardStats.self, from: data)
     }
 
+    func subcategoryDetails(month: String, subcategory: String) async throws -> SubcategoryDetails {
+        let url = baseURL.appendingPathComponent("dashboard/subcategory/")
+        var components = URLComponents(url: url, resolvingAgainstBaseURL: false)!
+        components.queryItems = [
+            URLQueryItem(name: "month", value: month),
+            URLQueryItem(name: "subcategory", value: subcategory)
+        ]
+        var req = URLRequest(url: components.url!, cachePolicy: .reloadIgnoringLocalCacheData)
+        req.httpMethod = "GET"
+        if let credentials = CredentialStore.shared.load() {
+            HMACSigner.sign(request: &req, credentials: credentials, body: nil)
+        }
+        let data = try await data(for: req)
+        return try JSONDecoder().decode(SubcategoryDetails.self, from: data)
+    }
+
     func summaries(period: String) async throws -> [SummaryRow] {
         let url = baseURL.appendingPathComponent("summaries/")
         var components = URLComponents(url: url, resolvingAgainstBaseURL: false)!
