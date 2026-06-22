@@ -42,22 +42,13 @@ final class APIClient {
     func dashboard(period: String, month: String, category: String, limit: Int) async throws -> DashboardStats {
         let url = baseURL.appendingPathComponent("dashboard/")
         var components = URLComponents(url: url, resolvingAgainstBaseURL: false)!
-        var items = [
-            URLQueryItem(name: "period", value: period),
-            URLQueryItem(name: "limit", value: String(limit))
-        ]
-        if period == "month", !month.isEmpty {
-            items.append(URLQueryItem(name: "month", value: month))
-        }
-        if !category.isEmpty {
-            items.append(URLQueryItem(name: "category", value: category))
-        }
+        var items = [URLQueryItem(name: "period", value: period), URLQueryItem(name: "limit", value: String(limit))]
+        if period == "month", !month.isEmpty { items.append(URLQueryItem(name: "month", value: month)) }
+        if !category.isEmpty { items.append(URLQueryItem(name: "category", value: category)) }
         components.queryItems = items
         var req = URLRequest(url: components.url!, cachePolicy: .reloadIgnoringLocalCacheData)
         req.httpMethod = "GET"
-        if let credentials = CredentialStore.shared.load() {
-            HMACSigner.sign(request: &req, credentials: credentials, body: nil)
-        }
+        if let credentials = CredentialStore.shared.load() { HMACSigner.sign(request: &req, credentials: credentials, body: nil) }
         let data = try await data(for: req)
         return try JSONDecoder().decode(DashboardStats.self, from: data)
     }
@@ -65,15 +56,10 @@ final class APIClient {
     func subcategoryDetails(month: String, subcategory: String) async throws -> SubcategoryDetails {
         let url = baseURL.appendingPathComponent("dashboard/subcategory/")
         var components = URLComponents(url: url, resolvingAgainstBaseURL: false)!
-        components.queryItems = [
-            URLQueryItem(name: "month", value: month),
-            URLQueryItem(name: "subcategory", value: subcategory)
-        ]
+        components.queryItems = [URLQueryItem(name: "month", value: month), URLQueryItem(name: "subcategory", value: subcategory)]
         var req = URLRequest(url: components.url!, cachePolicy: .reloadIgnoringLocalCacheData)
         req.httpMethod = "GET"
-        if let credentials = CredentialStore.shared.load() {
-            HMACSigner.sign(request: &req, credentials: credentials, body: nil)
-        }
+        if let credentials = CredentialStore.shared.load() { HMACSigner.sign(request: &req, credentials: credentials, body: nil) }
         let data = try await data(for: req)
         return try JSONDecoder().decode(SubcategoryDetails.self, from: data)
     }
@@ -84,9 +70,7 @@ final class APIClient {
         components.queryItems = [URLQueryItem(name: "period", value: period)]
         var req = URLRequest(url: components.url!, cachePolicy: .reloadIgnoringLocalCacheData)
         req.httpMethod = "GET"
-        if let credentials = CredentialStore.shared.load() {
-            HMACSigner.sign(request: &req, credentials: credentials, body: nil)
-        }
+        if let credentials = CredentialStore.shared.load() { HMACSigner.sign(request: &req, credentials: credentials, body: nil) }
         let data = try await data(for: req)
         let rows = try JSONDecoder().decode([SummaryRow].self, from: data)
         LocalCache.shared.saveSummaries(rows, period: period)
@@ -107,9 +91,7 @@ final class APIClient {
 
     func uploadReceipt(image: UIImage) async throws -> Receipt {
         let processed = image.preprocessedForReceipt()
-        guard let imageData = processed.jpegData(compressionQuality: 0.72) else {
-            throw URLError(.cannotDecodeContentData)
-        }
+        guard let imageData = processed.jpegData(compressionQuality: 0.72) else { throw URLError(.cannotDecodeContentData) }
         let boundary = UUID().uuidString
         var body = Data()
         body.append("--\(boundary)\r\n")
@@ -124,10 +106,30 @@ final class APIClient {
         LocalCache.shared.upsertReceipt(receipt)
         return receipt
     }
+
+    func importBankStatement(fileURL: URL, bank: String) async throws -> BankImportResult {
+        let boundary = UUID().uuidString
+        var body = Data()
+        let filename = fileURL.lastPathComponent.isEmpty ? "statement.csv" : fileURL.lastPathComponent
+        let fileData = try Data(contentsOf: fileURL)
+
+        body.append("--\(boundary)\r\n")
+        body.append("Content-Disposition: form-data; name=\"bank\"\r\n\r\n")
+        body.append(bank)
+        body.append("\r\n")
+        body.append("--\(boundary)\r\n")
+        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"\(filename)\"\r\n")
+        body.append("Content-Type: text/csv\r\n\r\n")
+        body.append(fileData)
+        body.append("\r\n--\(boundary)--\r\n")
+
+        var req = request("bank/import/", method: "POST", body: body)
+        req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        let data = try await data(for: req)
+        return try JSONDecoder().decode(BankImportResult.self, from: data)
+    }
 }
 
 private extension Data {
-    mutating func append(_ string: String) {
-        append(string.data(using: .utf8)!)
-    }
+    mutating func append(_ string: String) { append(string.data(using: .utf8)!) }
 }
