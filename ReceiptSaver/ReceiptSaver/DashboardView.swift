@@ -11,7 +11,7 @@ struct DashboardView: View {
     @State private var pickerSource: ImagePicker.Source = .camera
     @State private var uploadStatus = ""
 
-    let periods = [("month", "Miesiąc"), ("quarter", "Kwartał"), ("halfyear", "Półrocze"), ("year", "Rok")]
+    let periods = [("month", "Miesiące"), ("quarter", "Kwartały"), ("year", "Lata"), ("last30", "30 dni"), ("last90", "90 dni")]
     let limits = [5, 10, 15, 20]
 
     var body: some View {
@@ -38,18 +38,23 @@ struct DashboardView: View {
                         if let dashboard = dashboard {
                             cards(dashboard.cards)
 
-                            sectionHeader("Największe kategorie")
-                            BarList(rows: dashboard.categories, maxValue: maxSpent(dashboard.categories))
-
-                            filterControls(dashboard.available_categories)
+                            if !dashboard.timeline.isEmpty {
+                                sectionHeader(timelineTitle())
+                                BarList(rows: dashboard.timeline, maxValue: maxSpent(dashboard.timeline))
+                            }
 
                             sectionHeader(categoryFilter.isEmpty ? "Największe subkategorie" : "Subkategorie: \(categoryFilter)")
                             BarList(rows: dashboard.subcategories, maxValue: maxSpent(dashboard.subcategories))
 
+                            filterControls(dashboard.available_categories)
+
+                            sectionHeader("Główne kategorie")
+                            BarList(rows: dashboard.categories, maxValue: maxSpent(dashboard.categories))
+
                             sectionHeader("Najdroższe produkty")
                             BarList(rows: dashboard.products, maxValue: maxSpent(dashboard.products))
 
-                            sectionHeader("Sklepy")
+                            sectionHeader("Sklepy i odbiorcy")
                             BarList(rows: dashboard.stores, maxValue: maxSpent(dashboard.stores))
                         } else {
                             ProgressView("Wczytuję podsumowanie...")
@@ -70,7 +75,7 @@ struct DashboardView: View {
                 .padding(.bottom, 10)
                 .background(.thinMaterial)
             }
-            .navigationTitle("Podsumowanie")
+            .navigationTitle("Budżet")
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Menu("Więcej") {
@@ -100,16 +105,16 @@ struct DashboardView: View {
 
     private func cards(_ cards: DashboardCards) -> some View {
         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-            StatCard(title: "Wydano", value: "\(money(cards.spent)) zł")
+            StatCard(title: "Wydatki", value: "\(money(cards.spent)) zł")
             StatCard(title: "Oszczędzono", value: "\(money(cards.saved)) zł")
-            StatCard(title: "Paragony", value: "\(cards.receipt_count)")
-            StatCard(title: "Sklepy", value: "\(cards.store_count)")
+            StatCard(title: "Pozycje", value: "\(cards.receipt_count)")
+            StatCard(title: "Sklepy/odbiorcy", value: "\(cards.store_count)")
         }
     }
 
     private func filterControls(_ categories: [String]) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Filtry subkategorii")
+            Text("Filtry")
                 .font(.headline)
             Picker("Kategoria", selection: $categoryFilter) {
                 Text("Wszystkie kategorie").tag("")
@@ -138,6 +143,16 @@ struct DashboardView: View {
             .font(.title2)
             .fontWeight(.bold)
             .padding(.top, 4)
+    }
+
+    private func timelineTitle() -> String {
+        switch period {
+        case "quarter": return "Wydatki według kwartałów"
+        case "year": return "Wydatki według lat"
+        case "last30": return "Ostatnie 30 dni"
+        case "last90": return "Ostatnie 90 dni"
+        default: return "Wydatki według miesięcy"
+        }
     }
 
     private func maxSpent(_ rows: [DashboardBarRow]) -> Double {
