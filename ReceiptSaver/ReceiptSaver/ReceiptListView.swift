@@ -42,19 +42,21 @@ struct ReceiptListView: View {
                     .buttonStyle(.bordered)
                     .tint(accent)
 
-                    VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 12) {
                         Picker("Bank", selection: $selectedBank) {
                             ForEach(banks, id: \.0) { key, label in
                                 Text(label).tag(key)
                             }
                         }
-                        .pickerStyle(.segmented)
+                        .pickerStyle(.menu)
+
+                        Spacer(minLength: 8)
 
                         Button(action: { showBankPicker = true }) {
                             Label("Import wyciągu", systemImage: "doc.badge.plus")
-                                .frame(maxWidth: .infinity, minHeight: 46)
-                                .padding(.horizontal, 18)
-                                .padding(.vertical, 4)
+                                .lineLimit(1)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 8)
                         }
                         .buttonStyle(.bordered)
                         .tint(accent)
@@ -62,10 +64,12 @@ struct ReceiptListView: View {
                 }
                 .padding(.vertical, 6)
 
-                if !statusText.isEmpty {
+                if !statusText.isEmpty || lastFailedAction != nil {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text(statusText)
-                            .font(.body)
+                        if !statusText.isEmpty {
+                            Text(statusText)
+                                .font(.body)
+                        }
                         if queueTotalCount > 0 && queueProgress < 1.0 {
                             ProgressView(value: queueProgress)
                             Text("\(queueProcessedCount) z \(queueTotalCount) paragonów")
@@ -165,7 +169,7 @@ struct ReceiptListView: View {
         clearRetry()
         await uploadQueue.process(onProgress: { syncQueueStatus() }, onUploaded: { await load() })
         syncQueueStatus()
-        if uploadQueue.pendingCount > 0 && uploadQueue.statusText.lowercased().contains("błąd") {
+        if uploadQueue.pendingCount > 0 {
             scheduleRetry(.receiptQueue)
         }
     }
@@ -203,6 +207,7 @@ struct ReceiptListView: View {
         do {
             receipts = try await APIClient.shared.receipts()
             errorMessage = ""
+            if lastFailedAction == .loadReceipts { clearRetry() }
         } catch {
             errorMessage = "Nie udało się pobrać paragonów: \(errorMessageFor(error))"
             scheduleRetry(.loadReceipts)
@@ -238,7 +243,7 @@ struct ReceiptListView: View {
     private func scheduleRetry(_ action: FailedAction) {
         lastFailedAction = action
         showRetryButton = false
-        Task {
+        Task { @MainActor in
             try? await Task.sleep(nanoseconds: 7_000_000_000)
             if lastFailedAction == action {
                 showRetryButton = true
