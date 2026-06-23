@@ -19,7 +19,7 @@ struct ReceiptListView: View {
     @State private var uploadQueue = ReceiptUploadQueue()
 
     private let accent = Color(red: 0.00, green: 0.36, blue: 0.20)
-    private let banks = [("ing", "ING"), ("santander", "Santander")]
+    private let banks = [("ing", "ING"), ("santander", "Santander"), ("revolut", "Revolut")]
 
     var body: some View {
         List {
