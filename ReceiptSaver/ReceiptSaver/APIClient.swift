@@ -19,14 +19,20 @@ final class APIClient {
         var req = URLRequest(url: baseURL.appendingPathComponent(path), cachePolicy: .reloadIgnoringLocalCacheData)
         req.httpMethod = method
         req.httpBody = body
+        return req
+    }
+
+    private func signedRequest(_ request: URLRequest) -> URLRequest {
+        var req = request
         if let credentials = CredentialStore.shared.load() {
-            HMACSigner.sign(request: &req, credentials: credentials, body: body)
+            HMACSigner.sign(request: &req, credentials: credentials, body: req.httpBody)
         }
         return req
     }
 
     private func data(for request: URLRequest) async throws -> Data {
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let signed = signedRequest(request)
+        let (data, response) = try await URLSession.shared.data(for: signed)
         if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
             let body = String(data: data, encoding: .utf8) ?? ""
             throw APIError(statusCode: http.statusCode, body: body)
@@ -48,7 +54,6 @@ final class APIClient {
         components.queryItems = items
         var req = URLRequest(url: components.url!, cachePolicy: .reloadIgnoringLocalCacheData)
         req.httpMethod = "GET"
-        if let credentials = CredentialStore.shared.load() { HMACSigner.sign(request: &req, credentials: credentials, body: nil) }
         let data = try await data(for: req)
         return try JSONDecoder().decode(DashboardStats.self, from: data)
     }
@@ -59,7 +64,6 @@ final class APIClient {
         components.queryItems = [URLQueryItem(name: "month", value: month), URLQueryItem(name: "subcategory", value: subcategory)]
         var req = URLRequest(url: components.url!, cachePolicy: .reloadIgnoringLocalCacheData)
         req.httpMethod = "GET"
-        if let credentials = CredentialStore.shared.load() { HMACSigner.sign(request: &req, credentials: credentials, body: nil) }
         let data = try await data(for: req)
         return try JSONDecoder().decode(SubcategoryDetails.self, from: data)
     }
@@ -70,7 +74,6 @@ final class APIClient {
         components.queryItems = [URLQueryItem(name: "period", value: period)]
         var req = URLRequest(url: components.url!, cachePolicy: .reloadIgnoringLocalCacheData)
         req.httpMethod = "GET"
-        if let credentials = CredentialStore.shared.load() { HMACSigner.sign(request: &req, credentials: credentials, body: nil) }
         let data = try await data(for: req)
         let rows = try JSONDecoder().decode([SummaryRow].self, from: data)
         LocalCache.shared.saveSummaries(rows, period: period)
