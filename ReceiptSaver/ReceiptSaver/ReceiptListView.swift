@@ -17,6 +17,9 @@ struct ReceiptListView: View {
     @State private var queueProgress = 0.0
     @State private var selectedBank = "ing"
     @State private var uploadQueue = ReceiptUploadQueue()
+    @State private var lastFailedAction: FailedAction?
+    @State private var showRetryButton = false
+    @State private var lastBankFileURL: URL?
 
     private let accent = Color(red: 0.00, green: 0.36, blue: 0.20)
     private let banks = [("ing", "ING"), ("santander", "Santander"), ("revolut", "Revolut")]
@@ -39,16 +42,19 @@ struct ReceiptListView: View {
                     .buttonStyle(.bordered)
                     .tint(accent)
 
-                    HStack {
+                    VStack(alignment: .leading, spacing: 10) {
                         Picker("Bank", selection: $selectedBank) {
                             ForEach(banks, id: \.0) { key, label in
                                 Text(label).tag(key)
                             }
                         }
-                        .pickerStyle(.menu)
+                        .pickerStyle(.segmented)
 
                         Button(action: { showBankPicker = true }) {
                             Label("Import wyciągu", systemImage: "doc.badge.plus")
+                                .frame(maxWidth: .infinity, minHeight: 46)
+                                .padding(.horizontal, 18)
+                                .padding(.vertical, 4)
                         }
                         .buttonStyle(.bordered)
                         .tint(accent)
@@ -65,6 +71,15 @@ struct ReceiptListView: View {
                             Text("\(queueProcessedCount) z \(queueTotalCount) paragonów")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
+                        }
+                        if showRetryButton, lastFailedAction != nil {
+                            Button(action: { retryLastFailedAction() }) {
+                                Label("Spróbuj ponownie", systemImage: "arrow.clockwise")
+                                    .frame(maxWidth: .infinity, minHeight: 42)
+                                    .padding(.horizontal, 14)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(accent)
                         }
                     }
                     .padding(.vertical, 6)
@@ -105,6 +120,7 @@ struct ReceiptListView: View {
         }
         .sheet(isPresented: $showLibraryPicker) {
             MultiPhotoPicker(selectionLimit: 100) { images in
+                clearRetry()
                 uploadQueue.enqueue(images)
                 syncQueueStatus()
                 Task { await processQueue() }
@@ -112,6 +128,7 @@ struct ReceiptListView: View {
         }
         .sheet(isPresented: $showBankPicker) {
             BankStatementPicker { url in
+                lastBankFileURL = url
                 Task { await importBankStatement(url) }
             }
         }
@@ -145,14 +162,19 @@ struct ReceiptListView: View {
     }
 
     private func processQueue() async {
+        clearRetry()
         await uploadQueue.process(onProgress: { syncQueueStatus() }, onUploaded: { await load() })
         syncQueueStatus()
+        if uploadQueue.pendingCount > 0 && uploadQueue.statusText.lowercased().contains("błąd") {
+            scheduleRetry(.receiptQueue)
+        }
     }
 
     private func openBestScanner() {
         requestCameraAccess { granted in
             guard granted else {
                 uploadStatus = "Brak dostępu do aparatu. Włącz dostęp w Ustawieniach."
+                scheduleRetry(.scanner)
                 return
             }
             if DocumentScannerView.isAvailable {
@@ -183,10 +205,12 @@ struct ReceiptListView: View {
             errorMessage = ""
         } catch {
             errorMessage = "Nie udało się pobrać paragonów: \(errorMessageFor(error))"
+            scheduleRetry(.loadReceipts)
         }
     }
 
     private func upload(_ image: UIImage) async {
+        clearRetry()
         uploadStatus = "Wysyłam paragon..."
         do {
             _ = try await APIClient.shared.uploadReceipt(image: image)
@@ -194,16 +218,55 @@ struct ReceiptListView: View {
             await load()
         } catch {
             uploadStatus = "Błąd wysyłania paragonu: \(errorMessageFor(error))"
+            scheduleRetry(.scanner)
         }
     }
 
     private func importBankStatement(_ url: URL) async {
+        clearRetry()
         uploadStatus = "Importuję wyciąg bankowy..."
         do {
             let result = try await APIClient.shared.importBankStatement(fileURL: url, bank: selectedBank)
             uploadStatus = "Zaimportowano transakcje: \(result.created)."
         } catch {
             uploadStatus = "Błąd importu wyciągu: \(errorMessageFor(error))"
+            lastBankFileURL = url
+            scheduleRetry(.bankImport)
+        }
+    }
+
+    private func scheduleRetry(_ action: FailedAction) {
+        lastFailedAction = action
+        showRetryButton = false
+        Task {
+            try? await Task.sleep(nanoseconds: 7_000_000_000)
+            if lastFailedAction == action {
+                showRetryButton = true
+            }
+        }
+    }
+
+    private func clearRetry() {
+        lastFailedAction = nil
+        showRetryButton = false
+    }
+
+    private func retryLastFailedAction() {
+        guard let action = lastFailedAction else { return }
+        clearRetry()
+        switch action {
+        case .loadReceipts:
+            Task { await load() }
+        case .receiptQueue:
+            Task { await processQueue() }
+        case .bankImport:
+            if let url = lastBankFileURL {
+                Task { await importBankStatement(url) }
+            } else {
+                showBankPicker = true
+            }
+        case .scanner:
+            openBestScanner()
         }
     }
 
@@ -213,4 +276,11 @@ struct ReceiptListView: View {
         if let decodingError = error as? DecodingError { return "Błąd JSON: \(decodingError)" }
         return error.localizedDescription
     }
+}
+
+private enum FailedAction: Equatable {
+    case loadReceipts
+    case scanner
+    case receiptQueue
+    case bankImport
 }
