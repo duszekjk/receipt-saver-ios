@@ -11,11 +11,10 @@ struct DashboardView: View {
     @State private var showScanner = false
     @State private var pickerSource: ImagePicker.Source = .camera
     @State private var uploadStatus = ""
+    @State private var showRetryButton = false
     @State private var selectedSubcategory: DashboardBarRow?
     @State private var subcategoryDetails: SubcategoryDetails?
     @State private var detailsError = ""
-    @State private var showRetryButton = false
-    @State private var lastFailedAction: DashboardFailedAction?
 
     let periods = [("month", "Miesiąc"), ("last30", "30 dni"), ("last90", "90 dni")]
     let limits = [5, 10, 15, 20]
@@ -36,24 +35,23 @@ struct DashboardView: View {
                             compactMonthPicker(dashboard.available_months)
                         }
 
-                        if !uploadStatus.isEmpty || lastFailedAction != nil {
+                        if !uploadStatus.isEmpty || showRetryButton {
                             VStack(alignment: .leading, spacing: 10) {
                                 if !uploadStatus.isEmpty {
                                     Text(uploadStatus)
                                         .font(.body)
                                         .fixedSize(horizontal: false, vertical: true)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
                                 }
-                                if showRetryButton, lastFailedAction != nil {
-                                    Button(action: { retryLastFailedAction() }) {
+                                if showRetryButton {
+                                    Button(action: { Task { await loadDashboard() } }) {
                                         Label("Spróbuj ponownie", systemImage: "arrow.clockwise")
                                             .frame(maxWidth: .infinity, minHeight: 42)
-                                            .padding(.horizontal, 14)
                                     }
                                     .buttonStyle(.borderedProminent)
                                     .tint(accent)
                                 }
                             }
-                            .frame(maxWidth: .infinity, alignment: .leading)
                             .padding()
                             .background(Color.secondary.opacity(0.10))
                             .clipShape(RoundedRectangle(cornerRadius: 14))
@@ -199,11 +197,7 @@ struct DashboardView: View {
 
     private func openBestScanner() {
         requestCameraAccess { granted in
-            guard granted else {
-                uploadStatus = "Brak dostępu do aparatu. Włącz dostęp w Ustawieniach."
-                scheduleRetry(.scanner)
-                return
-            }
+            guard granted else { uploadStatus = "Brak dostępu do aparatu. Włącz dostęp w Ustawieniach."; scheduleDashboardRetry(); return }
             if DocumentScannerView.isAvailable { showScanner = true } else { pickerSource = .camera; showPicker = true }
         }
     }
@@ -217,15 +211,25 @@ struct DashboardView: View {
     }
 
     private func loadDashboard() async {
+        showRetryButton = false
         do {
             let result = try await APIClient.shared.dashboard(period: period, month: selectedMonth, category: categoryFilter, limit: limit)
             dashboard = result
             uploadStatus = ""
-            if lastFailedAction == .loadDashboard { clearRetry() }
             if selectedMonth.isEmpty || !result.available_months.contains(selectedMonth) { selectedMonth = result.selected_month }
         } catch {
             uploadStatus = "Nie udało się pobrać dashboardu: \(errorMessage(error))"
-            scheduleRetry(.loadDashboard)
+            scheduleDashboardRetry()
+        }
+    }
+
+    private func scheduleDashboardRetry() {
+        showRetryButton = false
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 7_000_000_000)
+            if !uploadStatus.isEmpty {
+                showRetryButton = true
+            }
         }
     }
 
@@ -237,37 +241,9 @@ struct DashboardView: View {
     }
 
     private func upload(_ image: UIImage) async {
-        clearRetry()
         uploadStatus = "Wysyłam paragon..."
         do { _ = try await APIClient.shared.uploadReceipt(image: image); uploadStatus = "Paragon dodany"; await loadDashboard() }
-        catch { uploadStatus = "Błąd wysyłania paragonu: \(errorMessage(error))"; scheduleRetry(.scanner) }
-    }
-
-    private func scheduleRetry(_ action: DashboardFailedAction) {
-        lastFailedAction = action
-        showRetryButton = false
-        Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 7_000_000_000)
-            if lastFailedAction == action {
-                showRetryButton = true
-            }
-        }
-    }
-
-    private func clearRetry() {
-        lastFailedAction = nil
-        showRetryButton = false
-    }
-
-    private func retryLastFailedAction() {
-        guard let action = lastFailedAction else { return }
-        clearRetry()
-        switch action {
-        case .loadDashboard:
-            Task { await loadDashboard() }
-        case .scanner:
-            openBestScanner()
-        }
+        catch { uploadStatus = "Błąd wysyłania paragonu: \(errorMessage(error))"; scheduleDashboardRetry() }
     }
 
     private func errorMessage(_ error: Error) -> String {
@@ -366,9 +342,4 @@ struct SubcategoryDetailsView: View {
             }.navigationTitle(title)
         }.navigationViewStyle(.stack)
     }
-}
-
-private enum DashboardFailedAction: Equatable {
-    case loadDashboard
-    case scanner
 }
