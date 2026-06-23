@@ -11,10 +11,11 @@ struct DashboardView: View {
     @State private var showScanner = false
     @State private var pickerSource: ImagePicker.Source = .camera
     @State private var uploadStatus = ""
-    @State private var showRetryButton = false
     @State private var selectedSubcategory: DashboardBarRow?
     @State private var subcategoryDetails: SubcategoryDetails?
     @State private var detailsError = ""
+    @State private var showRetryButton = false
+    @State private var lastFailedAction: DashboardFailedAction?
 
     let periods = [("month", "Miesiąc"), ("last30", "30 dni"), ("last90", "90 dni")]
     let limits = [5, 10, 15, 20]
@@ -35,17 +36,18 @@ struct DashboardView: View {
                             compactMonthPicker(dashboard.available_months)
                         }
 
-                        if !uploadStatus.isEmpty || showRetryButton {
+                        if !uploadStatus.isEmpty || lastFailedAction != nil {
                             VStack(alignment: .leading, spacing: 10) {
                                 if !uploadStatus.isEmpty {
                                     Text(uploadStatus)
                                         .font(.body)
                                         .fixedSize(horizontal: false, vertical: true)
                                 }
-                                if showRetryButton {
-                                    Button(action: { Task { await retryDashboard() } }) {
+                                if showRetryButton, lastFailedAction != nil {
+                                    Button(action: { retryLastFailedAction() }) {
                                         Label("Spróbuj ponownie", systemImage: "arrow.clockwise")
                                             .frame(maxWidth: .infinity, minHeight: 42)
+                                            .padding(.horizontal, 14)
                                     }
                                     .buttonStyle(.borderedProminent)
                                     .tint(accent)
@@ -100,9 +102,15 @@ struct DashboardView: View {
                 .background(.thinMaterial)
             }
             .navigationTitle("Budżet")
-            .sheet(isPresented: $showPicker) { ImagePicker(source: pickerSource) { image in Task { await upload(image) } } }
-            .sheet(isPresented: $showScanner) { DocumentScannerView(onImage: { image in Task { await upload(image) } }, onCancel: {}) }
-            .sheet(item: $selectedSubcategory) { row in SubcategoryDetailsView(title: displayLabel(row.name), details: subcategoryDetails, error: detailsError, displayName: displayLabel) }
+            .sheet(isPresented: $showPicker) {
+                ImagePicker(source: pickerSource) { image in Task { await upload(image) } }
+            }
+            .sheet(isPresented: $showScanner) {
+                DocumentScannerView(onImage: { image in Task { await upload(image) } }, onCancel: {})
+            }
+            .sheet(item: $selectedSubcategory) { row in
+                SubcategoryDetailsView(title: displayLabel(row.name), details: subcategoryDetails, error: detailsError, displayName: displayLabel)
+            }
             .task { await loadDashboard() }
         }
         .navigationViewStyle(.stack)
@@ -112,9 +120,11 @@ struct DashboardView: View {
         HStack(spacing: 12) {
             Text("Miesiąc").font(.headline)
             Spacer(minLength: 8)
-            Picker("Miesiąc", selection: $selectedMonth) { ForEach(months, id: \.self) { month in Text(monthDisplay(month)).tag(month) } }
-                .pickerStyle(.menu)
-                .onChange(of: selectedMonth) { _ in Task { await loadDashboard() } }
+            Picker("Miesiąc", selection: $selectedMonth) {
+                ForEach(months, id: \.self) { month in Text(monthDisplay(month)).tag(month) }
+            }
+            .pickerStyle(.menu)
+            .onChange(of: selectedMonth) { _ in Task { await loadDashboard() } }
         }
         .frame(maxWidth: .infinity)
         .padding(.horizontal, 14)
@@ -146,9 +156,11 @@ struct DashboardView: View {
                 .pickerStyle(.menu)
             }
             .onChange(of: categoryFilter) { _ in Task { await loadDashboard() } }
-            Picker("Liczba pozycji", selection: $limit) { ForEach(limits, id: \.self) { value in Text("Top \(value)").tag(value) } }
-                .pickerStyle(.segmented)
-                .onChange(of: limit) { _ in Task { await loadDashboard() } }
+            Picker("Liczba pozycji", selection: $limit) {
+                ForEach(limits, id: \.self) { value in Text("Top \(value)").tag(value) }
+            }
+            .pickerStyle(.segmented)
+            .onChange(of: limit) { _ in Task { await loadDashboard() } }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding()
@@ -156,7 +168,13 @@ struct DashboardView: View {
         .clipShape(RoundedRectangle(cornerRadius: 14))
     }
 
-    private func sectionHeader(_ title: String) -> some View { Text(title).font(.title2).fixedSize(horizontal: false, vertical: true).padding(.top, 4) }
+    private func sectionHeader(_ title: String) -> some View {
+        Text(title)
+            .font(.title2)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.top, 4)
+    }
+
     private func timelineTitle() -> String { period == "last30" ? "Ostatnie 30 dni" : period == "last90" ? "Ostatnie 90 dni" : "Wydatki według miesięcy" }
 
     private func monthDisplay(_ month: String) -> String {
@@ -169,8 +187,11 @@ struct DashboardView: View {
     private func displayLabel(_ value: String) -> String {
         if value.range(of: "[ąćęłńóśźżĄĆĘŁŃÓŚŹŻ]", options: .regularExpression) != nil { return value }
         let key = value.lowercased().replacingOccurrences(of: " ", with: "_").replacingOccurrences(of: "-", with: "_")
-        let labels = ["inne": "Inne", "paliwo": "Paliwo", "transport": "Transport", "zywnosc": "Żywność", "jedzenie": "Jedzenie", "zdrowie": "Zdrowie", "wizyta_u_lekarza": "Wizyta u lekarza", "leki": "Leki", "alkohol": "Alkohol", "alkohole": "Alkohole", "piwo": "Piwo", "wino": "Wino", "wodka": "Wódka", "mocny_alkohol": "Mocny alkohol", "hazard": "Hazard", "zaklady_bukmacherskie": "Zakłady bukmacherskie", "zaklady_sportowe": "Zakłady sportowe", "darowizny": "Darowizny", "dom": "Dom", "media": "Media", "telefon": "Telefon", "internet": "Internet", "restauracje": "Restauracje", "rozrywka": "Rozrywka", "ubrania": "Ubrania", "oszczednosci": "Oszczędności", "miod": "Miód", "roze": "Róże", "roza": "Róża", "kwiaty": "Kwiaty", "nabial": "Nabiał", "mieso": "Mięso", "wedliny": "Wędliny", "mrozonki": "Mrożonki", "slodycze": "Słodycze", "srodki_czystosci": "Środki czystości", "papier_toaletowy": "Papier toaletowy", "odziez": "Odzież", "ksiazki": "Książki", "rekodzielo": "Rękodzieło"]
-        return labels[key] ?? value.replacingOccurrences(of: "_", with: " ").capitalized
+        let labels = [
+            "inne": "Inne", "paliwo": "Paliwo", "transport": "Transport", "zywnosc": "Żywność", "jedzenie": "Jedzenie", "zdrowie": "Zdrowie", "wizyta_u_lekarza": "Wizyta u lekarza", "leki": "Leki", "alkohol": "Alkohol", "alkohole": "Alkohole", "piwo": "Piwo", "wino": "Wino", "wodka": "Wódka", "mocny_alkohol": "Mocny alkohol", "hazard": "Hazard", "zaklady_bukmacherskie": "Zakłady bukmacherskie", "zaklady_sportowe": "Zakłady sportowe", "darowizny": "Darowizny", "dom": "Dom", "media": "Media", "telefon": "Telefon", "internet": "Internet", "restauracje": "Restauracje", "rozrywka": "Rozrywka", "ubrania": "Ubrania", "oszczednosci": "Oszczędności", "miod": "Miód", "roze": "Róże", "roza": "Róża", "kwiaty": "Kwiaty", "nabial": "Nabiał", "mieso": "Mięso", "wedliny": "Wędliny", "mrozonki": "Mrożonki", "slodycze": "Słodycze", "srodki_czystosci": "Środki czystości", "papier_toaletowy": "Papier toaletowy", "odziez": "Odzież", "ksiazki": "Książki", "rekodzielo": "Rękodzieło"
+        ]
+        if let label = labels[key] { return label }
+        return value.replacingOccurrences(of: "_", with: " ").capitalized
     }
 
     private func maxSpent(_ rows: [DashboardBarRow]) -> Double { max(rows.map(\.spent).max() ?? 1, 1) }
@@ -178,7 +199,11 @@ struct DashboardView: View {
 
     private func openBestScanner() {
         requestCameraAccess { granted in
-            guard granted else { uploadStatus = "Brak dostępu do aparatu. Włącz dostęp w Ustawieniach."; scheduleRetry(); return }
+            guard granted else {
+                uploadStatus = "Brak dostępu do aparatu. Włącz dostęp w Ustawieniach."
+                scheduleRetry(.scanner)
+                return
+            }
             if DocumentScannerView.isAvailable { showScanner = true } else { pickerSource = .camera; showPicker = true }
         }
     }
@@ -192,25 +217,15 @@ struct DashboardView: View {
     }
 
     private func loadDashboard() async {
-        showRetryButton = false
         do {
             let result = try await APIClient.shared.dashboard(period: period, month: selectedMonth, category: categoryFilter, limit: limit)
             dashboard = result
             uploadStatus = ""
+            if lastFailedAction == .loadDashboard { clearRetry() }
             if selectedMonth.isEmpty || !result.available_months.contains(selectedMonth) { selectedMonth = result.selected_month }
         } catch {
             uploadStatus = "Nie udało się pobrać dashboardu: \(errorMessage(error))"
-            scheduleRetry()
-        }
-    }
-
-    private func retryDashboard() async { await loadDashboard() }
-
-    private func scheduleRetry() {
-        showRetryButton = false
-        Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 7_000_000_000)
-            if !uploadStatus.isEmpty { showRetryButton = true }
+            scheduleRetry(.loadDashboard)
         }
     }
 
@@ -222,10 +237,37 @@ struct DashboardView: View {
     }
 
     private func upload(_ image: UIImage) async {
+        clearRetry()
         uploadStatus = "Wysyłam paragon..."
-        showRetryButton = false
         do { _ = try await APIClient.shared.uploadReceipt(image: image); uploadStatus = "Paragon dodany"; await loadDashboard() }
-        catch { uploadStatus = "Błąd wysyłania paragonu: \(errorMessage(error))"; scheduleRetry() }
+        catch { uploadStatus = "Błąd wysyłania paragonu: \(errorMessage(error))"; scheduleRetry(.scanner) }
+    }
+
+    private func scheduleRetry(_ action: DashboardFailedAction) {
+        lastFailedAction = action
+        showRetryButton = false
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 7_000_000_000)
+            if lastFailedAction == action {
+                showRetryButton = true
+            }
+        }
+    }
+
+    private func clearRetry() {
+        lastFailedAction = nil
+        showRetryButton = false
+    }
+
+    private func retryLastFailedAction() {
+        guard let action = lastFailedAction else { return }
+        clearRetry()
+        switch action {
+        case .loadDashboard:
+            Task { await loadDashboard() }
+        case .scanner:
+            openBestScanner()
+        }
     }
 
     private func errorMessage(_ error: Error) -> String {
@@ -240,8 +282,14 @@ struct StatCard: View {
     let title: String
     let value: String
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) { Text(title).font(.headline).foregroundColor(.secondary).lineLimit(2); Text(value).font(.title2).lineLimit(2).minimumScaleFactor(0.75) }
-            .frame(maxWidth: .infinity, alignment: .leading).padding().background(Color.secondary.opacity(0.08)).clipShape(RoundedRectangle(cornerRadius: 14))
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title).font(.headline).foregroundColor(.secondary).lineLimit(2)
+            Text(value).font(.title2).lineLimit(2).minimumScaleFactor(0.75)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding()
+        .background(Color.secondary.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
     }
 }
 
@@ -253,16 +301,52 @@ struct BarList: View {
     var onTap: ((DashboardBarRow) -> Void)? = nil
     var body: some View {
         VStack(spacing: 12) {
-            if rows.isEmpty { Text("Brak danych").frame(maxWidth: .infinity, alignment: .leading).padding().background(Color.secondary.opacity(0.06)).clipShape(RoundedRectangle(cornerRadius: 12)) }
-            else { ForEach(rows) { row in Button(action: { onTap?(row) }) { bar(row) }.buttonStyle(.plain).disabled(onTap == nil) } }
-        }.frame(maxWidth: .infinity)
+            if rows.isEmpty {
+                Text("Brak danych")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding()
+                    .background(Color.secondary.opacity(0.06))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+            } else {
+                ForEach(rows) { row in
+                    Button(action: { onTap?(row) }) { bar(row) }
+                        .buttonStyle(.plain)
+                        .disabled(onTap == nil)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity)
     }
     private func bar(_ row: DashboardBarRow) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .top, spacing: 8) { Text(displayName(row.name)).font(.headline).foregroundColor(.primary).lineLimit(2).fixedSize(horizontal: false, vertical: true); Spacer(minLength: 8); Text(String(format: "%.2f zł", row.spent)).font(.headline).foregroundColor(.primary).lineLimit(1).minimumScaleFactor(0.75) }
-            GeometryReader { geometry in ZStack(alignment: .leading) { RoundedRectangle(cornerRadius: 6).fill(Color.secondary.opacity(0.15)).frame(height: 12); RoundedRectangle(cornerRadius: 6).fill(accent).frame(width: min(geometry.size.width, max(8, geometry.size.width * CGFloat(row.spent / maxValue))), height: 12) } }.frame(height: 12)
-            HStack { Text("\(row.count) pozycji").font(.caption).foregroundColor(.secondary); if onTap != nil { Spacer(); Text("Pokaż").font(.caption).foregroundColor(accent) } }
-        }.frame(maxWidth: .infinity, alignment: .leading).padding().background(Color.secondary.opacity(0.06)).clipShape(RoundedRectangle(cornerRadius: 12))
+            HStack(alignment: .top, spacing: 8) {
+                Text(displayName(row.name))
+                    .font(.headline)
+                    .foregroundColor(.primary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 8)
+                Text(String(format: "%.2f zł", row.spent))
+                    .font(.headline)
+                    .foregroundColor(.primary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+            }
+            GeometryReader { geometry in
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 6).fill(Color.secondary.opacity(0.15)).frame(height: 12)
+                    RoundedRectangle(cornerRadius: 6).fill(accent).frame(width: min(geometry.size.width, max(8, geometry.size.width * CGFloat(row.spent / maxValue))), height: 12)
+                }
+            }.frame(height: 12)
+            HStack {
+                Text("\(row.count) pozycji").font(.caption).foregroundColor(.secondary)
+                if onTap != nil { Spacer(); Text("Pokaż").font(.caption).foregroundColor(accent) }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding()
+        .background(Color.secondary.opacity(0.06))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 }
 
@@ -275,9 +359,16 @@ struct SubcategoryDetailsView: View {
         NavigationView {
             List {
                 if !error.isEmpty { Text("Nie udało się pobrać szczegółów: \(error)") }
-                else if let details = details { if details.items.isEmpty { Text("Brak pozycji w tej subkategorii.") } else { ForEach(details.items) { item in VStack(alignment: .leading, spacing: 4) { Text(displayName(item.name)).font(.headline); if !item.merchant.isEmpty { Text(item.merchant).font(.caption).foregroundColor(.secondary) }; Text("\(item.count) pozycji • \(String(format: "%.2f", item.spent)) zł").font(.subheadline).foregroundColor(.secondary) } } } }
-                else { ProgressView("Wczytuję szczegóły...") }
+                else if let details = details {
+                    if details.items.isEmpty { Text("Brak pozycji w tej subkategorii.") }
+                    else { ForEach(details.items) { item in VStack(alignment: .leading, spacing: 4) { Text(displayName(item.name)).font(.headline); if !item.merchant.isEmpty { Text(item.merchant).font(.caption).foregroundColor(.secondary) }; Text("\(item.count) pozycji • \(String(format: "%.2f", item.spent)) zł").font(.subheadline).foregroundColor(.secondary) } } }
+                } else { ProgressView("Wczytuję szczegóły...") }
             }.navigationTitle(title)
         }.navigationViewStyle(.stack)
     }
+}
+
+private enum DashboardFailedAction: Equatable {
+    case loadDashboard
+    case scanner
 }
