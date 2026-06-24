@@ -244,7 +244,7 @@ struct ReceiptListView: View {
                 scheduleRetry(.bankImport)
                 return
             }
-            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            try? await Task.sleep(nanoseconds: 10_000_000_000)
             do { current = try await APIClient.shared.bankImportStatus(jobID: current.job_id) }
             catch {
                 uploadStatus = "Nie udało się sprawdzić statusu importu: \(errorMessageFor(error))"
