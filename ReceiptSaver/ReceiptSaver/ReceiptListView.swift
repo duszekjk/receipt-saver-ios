@@ -20,6 +20,8 @@ struct ReceiptListView: View {
     @State private var lastFailedAction: FailedAction?
     @State private var showRetryButton = false
     @State private var lastBankFileURL: URL?
+    @State private var bankImportProgress = 0.0
+    @State private var bankImportProgressText = ""
 
     private let accent = Color(red: 0.00, green: 0.36, blue: 0.20)
     private let banks = [("ing", "ING"), ("santander", "Santander"), ("revolut", "Revolut")]
@@ -44,9 +46,7 @@ struct ReceiptListView: View {
 
                     HStack(spacing: 12) {
                         Picker("Bank", selection: $selectedBank) {
-                            ForEach(banks, id: \.0) { key, label in
-                                Text(label).tag(key)
-                            }
+                            ForEach(banks, id: \.0) { key, label in Text(label).tag(key) }
                         }
                         .pickerStyle(.menu)
 
@@ -66,15 +66,14 @@ struct ReceiptListView: View {
 
                 if !statusText.isEmpty || lastFailedAction != nil {
                     VStack(alignment: .leading, spacing: 8) {
-                        if !statusText.isEmpty {
-                            Text(statusText)
-                                .font(.body)
-                        }
+                        if !statusText.isEmpty { Text(statusText).font(.body) }
                         if queueTotalCount > 0 && queueProgress < 1.0 {
                             ProgressView(value: queueProgress)
-                            Text("\(queueProcessedCount) z \(queueTotalCount) paragonów")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
+                            Text("\(queueProcessedCount) z \(queueTotalCount) paragonów").font(.caption).foregroundColor(.secondary)
+                        }
+                        if !bankImportProgressText.isEmpty && bankImportProgress < 1.0 {
+                            ProgressView(value: bankImportProgress)
+                            Text(bankImportProgressText).font(.caption).foregroundColor(.secondary)
                         }
                         if showRetryButton, lastFailedAction != nil {
                             Button(action: { retryLastFailedAction() }) {
@@ -92,23 +91,14 @@ struct ReceiptListView: View {
 
             Section("Lista paragonów") {
                 if receipts.isEmpty {
-                    Text("Brak paragonów")
-                        .foregroundColor(.secondary)
+                    Text("Brak paragonów").foregroundColor(.secondary)
                 } else {
                     ForEach(receipts) { receipt in
                         VStack(alignment: .leading, spacing: 10) {
-                            Text(receipt.merchant_name.isEmpty ? "Nieznany sklep" : receipt.merchant_name)
-                                .font(.title2)
-                            Text("Suma: \(receipt.total_amount ?? "?") \(receipt.currency)")
-                                .font(.title3)
-                            if let saved = receipt.discount_total {
-                                Text("Oszczędzono: \(saved) zł")
-                                    .font(.title3)
-                            }
-                            if receipt.duplicate_of != nil {
-                                Text("Możliwy duplikat")
-                                    .font(.headline)
-                            }
+                            Text(receipt.merchant_name.isEmpty ? "Nieznany sklep" : receipt.merchant_name).font(.title2)
+                            Text("Suma: \(receipt.total_amount ?? "?") \(receipt.currency)").font(.title3)
+                            if let saved = receipt.discount_total { Text("Oszczędzono: \(saved) zł").font(.title3) }
+                            if receipt.duplicate_of != nil { Text("Możliwy duplikat").font(.headline) }
                         }
                         .padding(.vertical, 10)
                     }
@@ -116,12 +106,8 @@ struct ReceiptListView: View {
             }
         }
         .navigationTitle("Paragony")
-        .sheet(isPresented: $showPicker) {
-            ImagePicker(source: pickerSource) { image in Task { await upload(image) } }
-        }
-        .sheet(isPresented: $showScanner) {
-            DocumentScannerView(onImage: { image in Task { await upload(image) } }, onCancel: {})
-        }
+        .sheet(isPresented: $showPicker) { ImagePicker(source: pickerSource) { image in Task { await upload(image) } } }
+        .sheet(isPresented: $showScanner) { DocumentScannerView(onImage: { image in Task { await upload(image) } }, onCancel: {}) }
         .sheet(isPresented: $showLibraryPicker) {
             MultiPhotoPicker(selectionLimit: 100) { images in
                 clearRetry()
@@ -140,6 +126,7 @@ struct ReceiptListView: View {
             await load()
             syncQueueStatus()
             await processQueueIfNeeded()
+            await pollLatestBankImportIfNeeded()
         }
     }
 
@@ -169,9 +156,7 @@ struct ReceiptListView: View {
         clearRetry()
         await uploadQueue.process(onProgress: { syncQueueStatus() }, onUploaded: { await load() })
         syncQueueStatus()
-        if uploadQueue.pendingCount > 0 {
-            scheduleRetry(.receiptQueue)
-        }
+        if uploadQueue.pendingCount > 0 { scheduleRetry(.receiptQueue) }
     }
 
     private func openBestScanner() {
@@ -181,25 +166,15 @@ struct ReceiptListView: View {
                 scheduleRetry(.scanner)
                 return
             }
-            if DocumentScannerView.isAvailable {
-                showScanner = true
-            } else {
-                pickerSource = .camera
-                showPicker = true
-            }
+            if DocumentScannerView.isAvailable { showScanner = true } else { pickerSource = .camera; showPicker = true }
         }
     }
 
     private func requestCameraAccess(_ completion: @escaping (Bool) -> Void) {
         switch AVCaptureDevice.authorizationStatus(for: .video) {
-        case .authorized:
-            completion(true)
-        case .notDetermined:
-            AVCaptureDevice.requestAccess(for: .video) { granted in
-                DispatchQueue.main.async { completion(granted) }
-            }
-        default:
-            completion(false)
+        case .authorized: completion(true)
+        case .notDetermined: AVCaptureDevice.requestAccess(for: .video) { granted in DispatchQueue.main.async { completion(granted) } }
+        default: completion(false)
         }
     }
 
@@ -229,10 +204,12 @@ struct ReceiptListView: View {
 
     private func importBankStatement(_ url: URL) async {
         clearRetry()
-        uploadStatus = "Importuję wyciąg bankowy..."
+        bankImportProgress = 0.0
+        bankImportProgressText = ""
+        uploadStatus = "Import wyciągu został dodany do kolejki..."
         do {
-            let result = try await APIClient.shared.importBankStatement(fileURL: url, bank: selectedBank)
-            uploadStatus = "Zaimportowano transakcje: \(result.created)."
+            _ = try await APIClient.shared.importBankStatement(fileURL: url, bank: selectedBank)
+            await pollLatestBankImportIfNeeded(force: true)
         } catch {
             uploadStatus = "Błąd importu wyciągu: \(errorMessageFor(error))"
             lastBankFileURL = url
@@ -240,14 +217,60 @@ struct ReceiptListView: View {
         }
     }
 
+    private func pollLatestBankImportIfNeeded(force: Bool = false) async {
+        do {
+            let status = try await APIClient.shared.latestBankImportStatus()
+            guard force || status.status == "queued" || status.status == "running" else { return }
+            await pollBankImport(status)
+        } catch {
+        }
+    }
+
+    private func pollBankImport(_ initial: BankImportJobStatus) async {
+        var current = initial
+        while true {
+            updateBankImportStatus(current)
+            if current.status == "completed" {
+                uploadStatus = "Zaimportowano transakcje: \(current.created)."
+                bankImportProgress = 1.0
+                bankImportProgressText = ""
+                await load()
+                clearRetry()
+                return
+            }
+            if current.status == "failed" {
+                uploadStatus = current.error_message.isEmpty ? "Błąd importu wyciągu." : "Błąd importu wyciągu: \(current.error_message)"
+                bankImportProgressText = ""
+                scheduleRetry(.bankImport)
+                return
+            }
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            do { current = try await APIClient.shared.bankImportStatus(jobID: current.job_id) }
+            catch {
+                uploadStatus = "Nie udało się sprawdzić statusu importu: \(errorMessageFor(error))"
+                scheduleRetry(.bankImport)
+                return
+            }
+        }
+    }
+
+    private func updateBankImportStatus(_ status: BankImportJobStatus) {
+        if status.progress_total > 0 {
+            bankImportProgress = min(1.0, Double(status.progress_current) / Double(status.progress_total))
+            bankImportProgressText = "\(status.progress_current) z \(status.progress_total) transakcji"
+        } else {
+            bankImportProgress = 0.15
+            bankImportProgressText = "Przygotowywanie importu"
+        }
+        uploadStatus = status.status == "queued" ? "Import wyciągu czeka w kolejce..." : "Import wyciągu trwa..."
+    }
+
     private func scheduleRetry(_ action: FailedAction) {
         lastFailedAction = action
         showRetryButton = false
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 7_000_000_000)
-            if lastFailedAction == action {
-                showRetryButton = true
-            }
+            if lastFailedAction == action { showRetryButton = true }
         }
     }
 
@@ -260,18 +283,11 @@ struct ReceiptListView: View {
         guard let action = lastFailedAction else { return }
         clearRetry()
         switch action {
-        case .loadReceipts:
-            Task { await load() }
-        case .receiptQueue:
-            Task { await processQueue() }
+        case .loadReceipts: Task { await load() }
+        case .receiptQueue: Task { await processQueue() }
         case .bankImport:
-            if let url = lastBankFileURL {
-                Task { await importBankStatement(url) }
-            } else {
-                showBankPicker = true
-            }
-        case .scanner:
-            openBestScanner()
+            if let url = lastBankFileURL { Task { await importBankStatement(url) } } else { showBankPicker = true }
+        case .scanner: openBestScanner()
         }
     }
 
