@@ -110,7 +110,7 @@ final class APIClient {
         return receipt
     }
 
-    func importBankStatement(fileURL: URL, bank: String) async throws -> BankImportResult {
+    func importBankStatement(fileURL: URL, bank: String) async throws -> BankImportJobStatus {
         let boundary = UUID().uuidString
         var body = Data()
         let filename = fileURL.lastPathComponent.isEmpty ? "statement.csv" : fileURL.lastPathComponent
@@ -129,7 +129,7 @@ final class APIClient {
         var req = request("bank/statement/", method: "POST", body: body)
         req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
         let data = try await data(for: req)
-        return try JSONDecoder().decode(BankImportResult.self, from: data)
+        return try JSONDecoder().decode(BankImportJobStatus.self, from: data)
     }
 }
 
