@@ -1,6 +1,6 @@
 import Foundation
 
-struct SubcategoryDetailRow: Identifiable, Codable {
+struct SubcategoryDetailRow: Identifiable, Decodable {
     var id: String { name + "-" + merchant + "-" + origin }
     let name: String
     let merchant: String
@@ -11,14 +11,6 @@ struct SubcategoryDetailRow: Identifiable, Codable {
     enum CodingKeys: String, CodingKey {
         case name, merchant, spent, count
         case origin = "source"
-    }
-
-    init(name: String, merchant: String, spent: Double, count: Int, origin: String) {
-        self.name = name
-        self.merchant = merchant
-        self.spent = spent
-        self.count = count
-        self.origin = origin
     }
 
     init(from decoder: Decoder) throws {
@@ -37,7 +29,7 @@ struct SubcategoryDetailRow: Identifiable, Codable {
     }
 }
 
-struct SubcategoryDetails: Codable {
+struct SubcategoryDetails: Decodable {
     let month: String
     let subcategory: String
     let items: [SubcategoryDetailRow]
