@@ -6,8 +6,24 @@ struct APIError: Error, LocalizedError {
     let body: String
 
     var errorDescription: String? {
-        body.isEmpty ? "HTTP \(statusCode)" : "HTTP \(statusCode): \(body)"
+        if let data = body.data(using: .utf8), let payload = try? JSONDecoder().decode(APIErrorPayload.self, from: data) {
+            return payload.detail
+        }
+        return body.isEmpty ? "HTTP \(statusCode)" : "HTTP \(statusCode): \(body)"
     }
+}
+
+struct APIErrorPayload: Codable {
+    let detail: String?
+    let code: String?
+    let requires_manual_date: Bool?
+    let receipt: Receipt?
+}
+
+struct ReceiptUploadResponse {
+    let receipt: Receipt
+    let requiresManualDate: Bool
+    let message: String
 }
 
 final class APIClient {
@@ -30,12 +46,17 @@ final class APIClient {
         return req
     }
 
-    private func data(for request: URLRequest) async throws -> Data {
+    private func response(for request: URLRequest) async throws -> (Data, HTTPURLResponse) {
         let signed = signedRequest(request)
         let (data, response) = try await URLSession.shared.data(for: signed)
-        if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
-            let body = String(data: data, encoding: .utf8) ?? ""
-            throw APIError(statusCode: http.statusCode, body: body)
+        guard let http = response as? HTTPURLResponse else { throw URLError(.badServerResponse) }
+        return (data, http)
+    }
+
+    private func data(for request: URLRequest) async throws -> Data {
+        let (data, http) = try await response(for: request)
+        if !(200...299).contains(http.statusCode) {
+            throw APIError(statusCode: http.statusCode, body: String(data: data, encoding: .utf8) ?? "")
         }
         return data
     }
@@ -54,8 +75,7 @@ final class APIClient {
         components.queryItems = items
         var req = URLRequest(url: components.url!, cachePolicy: .reloadIgnoringLocalCacheData)
         req.httpMethod = "GET"
-        let data = try await data(for: req)
-        return try JSONDecoder().decode(DashboardStats.self, from: data)
+        return try JSONDecoder().decode(DashboardStats.self, from: data(for: req))
     }
 
     func subcategoryDetails(month: String, subcategory: String) async throws -> SubcategoryDetails {
@@ -64,8 +84,7 @@ final class APIClient {
         components.queryItems = [URLQueryItem(name: "month", value: month), URLQueryItem(name: "subcategory", value: subcategory)]
         var req = URLRequest(url: components.url!, cachePolicy: .reloadIgnoringLocalCacheData)
         req.httpMethod = "GET"
-        let data = try await data(for: req)
-        return try JSONDecoder().decode(SubcategoryDetails.self, from: data)
+        return try JSONDecoder().decode(SubcategoryDetails.self, from: data(for: req))
     }
 
     func summaries(period: String) async throws -> [SummaryRow] {
@@ -74,35 +93,30 @@ final class APIClient {
         components.queryItems = [URLQueryItem(name: "period", value: period)]
         var req = URLRequest(url: components.url!, cachePolicy: .reloadIgnoringLocalCacheData)
         req.httpMethod = "GET"
-        let data = try await data(for: req)
-        let rows = try JSONDecoder().decode([SummaryRow].self, from: data)
+        let rows = try JSONDecoder().decode([SummaryRow].self, from: data(for: req))
         LocalCache.shared.saveSummaries(rows, period: period)
         return rows
     }
 
     func receipts() async throws -> [Receipt] {
-        let data = try await data(for: request("receipts/"))
-        let rows = try JSONDecoder().decode([Receipt].self, from: data)
+        let rows = try JSONDecoder().decode([Receipt].self, from: data(for: request("receipts/")))
         LocalCache.shared.saveReceipts(rows)
         return rows
     }
 
     func matchCandidates() async throws -> [MatchCandidate] {
-        let data = try await data(for: request("matches/review/"))
-        return try JSONDecoder().decode([MatchCandidate].self, from: data)
+        return try JSONDecoder().decode([MatchCandidate].self, from: data(for: request("matches/review/")))
     }
 
     func acceptMatchCandidate(id: Int) async throws -> MatchCandidate {
-        let data = try await data(for: request("matches/review/\(id)/accept/", method: "POST", body: Data()))
-        return try JSONDecoder().decode(MatchCandidate.self, from: data)
+        return try JSONDecoder().decode(MatchCandidate.self, from: data(for: request("matches/review/\(id)/accept/", method: "POST", body: Data())))
     }
 
     func rejectMatchCandidate(id: Int) async throws -> MatchCandidate {
-        let data = try await data(for: request("matches/review/\(id)/reject/", method: "POST", body: Data()))
-        return try JSONDecoder().decode(MatchCandidate.self, from: data)
+        return try JSONDecoder().decode(MatchCandidate.self, from: data(for: request("matches/review/\(id)/reject/", method: "POST", body: Data())))
     }
 
-    func uploadReceipt(image: UIImage) async throws -> Receipt {
+    func uploadReceipt(image: UIImage) async throws -> ReceiptUploadResponse {
         let processed = image.preprocessedForReceipt()
         guard let imageData = processed.jpegData(compressionQuality: 0.72) else { throw URLError(.cannotDecodeContentData) }
         let boundary = UUID().uuidString
@@ -114,8 +128,25 @@ final class APIClient {
         body.append("\r\n--\(boundary)--\r\n")
         var req = request("receipts/scan/", method: "POST", body: body)
         req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
-        let data = try await data(for: req)
+        let (data, http) = try await response(for: req)
+        if http.statusCode == 202 {
+            let payload = try JSONDecoder().decode(APIErrorPayload.self, from: data)
+            guard let receipt = payload.receipt else { throw APIError(statusCode: http.statusCode, body: String(data: data, encoding: .utf8) ?? "") }
+            LocalCache.shared.upsertReceipt(receipt)
+            return ReceiptUploadResponse(receipt: receipt, requiresManualDate: payload.requires_manual_date == true, message: payload.detail ?? "Data paragonu jest nieczytelna.")
+        }
+        guard (200...299).contains(http.statusCode) else { throw APIError(statusCode: http.statusCode, body: String(data: data, encoding: .utf8) ?? "") }
         let receipt = try JSONDecoder().decode(Receipt.self, from: data)
+        LocalCache.shared.upsertReceipt(receipt)
+        return ReceiptUploadResponse(receipt: receipt, requiresManualDate: false, message: "")
+    }
+
+    func setReceiptDate(receiptID: Int, date: Date) async throws -> Receipt {
+        let formatter = ISO8601DateFormatter()
+        let body = try JSONSerialization.data(withJSONObject: ["purchased_at": formatter.string(from: date)])
+        var req = request("receipts/\(receiptID)/date/", method: "POST", body: body)
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let receipt = try JSONDecoder().decode(Receipt.self, from: data(for: req))
         LocalCache.shared.upsertReceipt(receipt)
         return receipt
     }
@@ -125,7 +156,6 @@ final class APIClient {
         var body = Data()
         let filename = fileURL.lastPathComponent.isEmpty ? "statement.csv" : fileURL.lastPathComponent
         let fileData = try Data(contentsOf: fileURL)
-
         body.append("--\(boundary)\r\n")
         body.append("Content-Disposition: form-data; name=\"bank\"\r\n\r\n")
         body.append(bank)
@@ -135,11 +165,9 @@ final class APIClient {
         body.append("Content-Type: text/csv\r\n\r\n")
         body.append(fileData)
         body.append("\r\n--\(boundary)--\r\n")
-
         var req = request("bank/statement/", method: "POST", body: body)
         req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
-        let data = try await data(for: req)
-        return try JSONDecoder().decode(BankImportJobStatus.self, from: data)
+        return try JSONDecoder().decode(BankImportJobStatus.self, from: data(for: req))
     }
 }
 
