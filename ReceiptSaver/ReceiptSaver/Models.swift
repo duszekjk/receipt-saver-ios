@@ -122,14 +122,51 @@ struct BankTransaction: Identifiable, Codable {
     let transaction_at: String?
     let merchant_name: String
     let amount: String
+    let currency: String?
+    let raw_description: String?
+    let corrected_description: String?
+    let category: String?
+    let subcategory: String?
 }
 
 struct MatchCandidate: Identifiable, Codable {
     let id: Int
     let score: Double
     let status: String
+    let reason: [String: MatchReasonValue]?
     let receipt: Receipt
     let bank_transaction: BankTransaction
+}
+
+enum MatchReasonValue: Codable, CustomStringConvertible {
+    case string(String)
+    case double(Double)
+    case bool(Bool)
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if let value = try? container.decode(Bool.self) { self = .bool(value); return }
+        if let value = try? container.decode(Double.self) { self = .double(value); return }
+        if let value = try? container.decode(String.self) { self = .string(value); return }
+        self = .string("")
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .string(let value): try container.encode(value)
+        case .double(let value): try container.encode(value)
+        case .bool(let value): try container.encode(value)
+        }
+    }
+
+    var description: String {
+        switch self {
+        case .string(let value): return value
+        case .double(let value): return String(format: "%.2f", value)
+        case .bool(let value): return value ? "tak" : "nie"
+        }
+    }
 }
 
 extension KeyedDecodingContainer {
