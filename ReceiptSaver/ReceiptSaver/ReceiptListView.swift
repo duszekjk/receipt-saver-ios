@@ -66,7 +66,7 @@ struct ReceiptListView: View {
     }
 
     private var manualDateView: some View {
-        NavigationStack {
+        NavigationView {
             Form {
                 Section("Data paragonu") {
                     if !manualDateMessage.isEmpty { Text(manualDateMessage).foregroundColor(.secondary) }
@@ -79,6 +79,7 @@ struct ReceiptListView: View {
                 ToolbarItem(placement: .confirmationAction) { Button("Zapisz") { Task { await saveManualDate() } } }
             }
         }
+        .navigationViewStyle(StackNavigationViewStyle())
     }
 
     private var statusText: String { var parts: [String] = []; if !errorMessage.isEmpty { parts.append(errorMessage) }; if !uploadStatus.isEmpty { parts.append(uploadStatus) }; if !queueStatus.isEmpty { parts.append(queueStatus) }; if queuePendingCount > 0 { parts.append("Kolejka importu: \(queuePendingCount).") }; return parts.joined(separator: "\n") }
