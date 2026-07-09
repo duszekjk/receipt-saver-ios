@@ -25,13 +25,13 @@ final class ReceiptUploadQueue {
         refreshPendingCount(); totalCount = pendingCount; processedCount = 0; statusText = "Dodano do kolejki: \(images.count)."
     }
 
-    func resumeIfNeeded(onProgress: @escaping () -> Void, onUploaded: @escaping (ReceiptUploadResponse) async -> Void) async {
+    func resumeIfNeeded(onProgress: @escaping () -> Void, onUploaded: @escaping () async -> Void) async {
         refreshPendingCount(); totalCount = pendingCount; processedCount = 0; onProgress()
         guard pendingCount > 0 else { return }
         await process(onProgress: onProgress, onUploaded: onUploaded)
     }
 
-    func process(onProgress: @escaping () -> Void, onUploaded: @escaping (ReceiptUploadResponse) async -> Void) async {
+    func process(onProgress: @escaping () -> Void, onUploaded: @escaping () async -> Void) async {
         guard !isProcessing else { return }
         isProcessing = true
         defer { isProcessing = false; onProgress() }
@@ -45,9 +45,8 @@ final class ReceiptUploadQueue {
                 let result = try await APIClient.shared.uploadReceipt(image: image)
                 try? FileManager.default.removeItem(at: next)
                 processedCount += 1; refreshPendingCount()
-                statusText = result.requiresManualDate ? "Paragon odczytany. Data wymaga ręcznego uzupełnienia." : (pendingCount == 0 ? "Import z biblioteki zakończony." : "Paragon dodany. Czekam 2 sekundy przed następnym.")
-                onProgress(); await onUploaded(result)
-                if result.requiresManualDate { return }
+                statusText = result.requiresManualDate ? "Paragon odczytany, ale data wymaga ręcznego uzupełnienia na liście paragonów." : (pendingCount == 0 ? "Import z biblioteki zakończony." : "Paragon dodany. Czekam 2 sekundy przed następnym.")
+                onProgress(); await onUploaded()
                 if pendingCount > 0 { try? await Task.sleep(nanoseconds: 2_000_000_000) }
             } catch {
                 refreshPendingCount(); statusText = "Przerwano import. Błąd: \(error.localizedDescription). Kolejka zostaje zapisana."; onProgress(); return
