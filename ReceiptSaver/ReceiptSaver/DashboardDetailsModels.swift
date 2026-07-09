@@ -22,7 +22,7 @@ struct SubcategoryPurchaseDetail: Identifiable, Decodable {
 }
 
 struct SubcategoryDetailRow: Identifiable, Decodable {
-    var id: String { name + "-" + merchant + "-" + origin }
+    var id: String { name + "-" + merchant + "-" + origin + "-" + String(spent) }
     let name: String
     let merchant: String
     let spent: Double
@@ -33,6 +33,15 @@ struct SubcategoryDetailRow: Identifiable, Decodable {
     enum CodingKeys: String, CodingKey {
         case name, merchant, spent, count, details
         case origin = "source"
+    }
+
+    init(name: String, merchant: String, spent: Double, count: Int, origin: String, details: [SubcategoryPurchaseDetail] = []) {
+        self.name = name
+        self.merchant = merchant
+        self.spent = spent
+        self.count = count
+        self.origin = origin
+        self.details = details
     }
 
     init(from decoder: Decoder) throws {
@@ -65,10 +74,51 @@ struct SubcategoryDetails: Decodable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         month = try container.decodeIfPresent(String.self, forKey: .month) ?? ""
         subcategory = try container.decodeIfPresent(String.self, forKey: .subcategory) ?? ""
-        if let rows = try container.decodeIfPresent([SubcategoryDetailRow].self, forKey: .items) {
-            items = rows
-        } else {
-            items = try container.decodeIfPresent([SubcategoryDetailRow].self, forKey: .products) ?? []
+        let groupedRows = try container.decodeIfPresent([SubcategoryDetailRow].self, forKey: .items)
+            ?? container.decodeIfPresent([SubcategoryDetailRow].self, forKey: .products)
+            ?? []
+
+        let concreteRows = groupedRows.flatMap { row -> [SubcategoryDetailRow] in
+            guard !row.details.isEmpty else { return [row] }
+            return row.details.map { detail in
+                var context: [String] = []
+                if !detail.merchant.isEmpty { context.append(detail.merchant) }
+                if !detail.date.isEmpty { context.append(Self.displayDate(detail.date)) }
+                if let quantity = detail.quantity { context.append("ilość: \(Self.number(quantity))") }
+                if let unitPrice = detail.unit_price { context.append("cena jedn.: \(Self.money(unitPrice)) zł") }
+                if detail.discount_amount > 0 { context.append("rabat: \(Self.money(detail.discount_amount)) zł") }
+                if !detail.promotion_name.isEmpty { context.append(detail.promotion_name) }
+                return SubcategoryDetailRow(
+                    name: detail.name.isEmpty ? row.name : detail.name,
+                    merchant: context.joined(separator: " • "),
+                    spent: detail.spent,
+                    count: 1,
+                    origin: detail.origin,
+                    details: [detail]
+                )
+            }
         }
+        items = concreteRows.sorted { lhs, rhs in
+            let leftDate = lhs.details.first?.date ?? ""
+            let rightDate = rhs.details.first?.date ?? ""
+            return leftDate > rightDate
+        }
+    }
+
+    private static func displayDate(_ value: String) -> String {
+        let formatter = ISO8601DateFormatter()
+        guard let date = formatter.date(from: value) else { return value }
+        let output = DateFormatter()
+        output.locale = Locale(identifier: "pl_PL")
+        output.dateFormat = "dd.MM.yyyy HH:mm"
+        return output.string(from: date)
+    }
+
+    private static func money(_ value: Double) -> String {
+        String(format: "%.2f", value)
+    }
+
+    private static func number(_ value: Double) -> String {
+        value.rounded() == value ? String(Int(value)) : String(format: "%.2f", value)
     }
 }
