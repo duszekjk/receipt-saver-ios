@@ -92,6 +92,16 @@ final class APIClient {
         return try JSONDecoder().decode([MatchCandidate].self, from: data)
     }
 
+    func acceptMatchCandidate(id: Int) async throws -> MatchCandidate {
+        let data = try await data(for: request("matches/review/\(id)/accept/", method: "POST", body: Data()))
+        return try JSONDecoder().decode(MatchCandidate.self, from: data)
+    }
+
+    func rejectMatchCandidate(id: Int) async throws -> MatchCandidate {
+        let data = try await data(for: request("matches/review/\(id)/reject/", method: "POST", body: Data()))
+        return try JSONDecoder().decode(MatchCandidate.self, from: data)
+    }
+
     func uploadReceipt(image: UIImage) async throws -> Receipt {
         let processed = image.preprocessedForReceipt()
         guard let imageData = processed.jpegData(compressionQuality: 0.72) else { throw URLError(.cannotDecodeContentData) }
