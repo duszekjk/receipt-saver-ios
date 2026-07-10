@@ -1,8 +1,19 @@
 import SwiftUI
+#if canImport(AppIntents)
+import AppIntents
+#endif
 
 @main
 struct ReceiptSaverApp: App {
     @State private var isLoggedIn = CredentialStore.shared.load() != nil
+
+    init() {
+        #if canImport(AppIntents)
+        if #available(iOS 16.0, macOS 13.0, *) {
+            ReceiptSaverShortcuts.updateAppShortcutParameters()
+        }
+        #endif
+    }
 
     var body: some Scene {
         WindowGroup {
