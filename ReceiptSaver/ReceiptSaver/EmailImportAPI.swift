@@ -24,20 +24,20 @@ extension APIClient {
         let boundary = UUID().uuidString
         var body = Data()
 
-        body.append("--\(boundary)\r\n")
-        body.append("Content-Disposition: form-data; name=\"text\"\r\n\r\n")
-        body.append(text)
-        body.append("\r\n")
+        body.appendUTF8("--\(boundary)\r\n")
+        body.appendUTF8("Content-Disposition: form-data; name=\"text\"\r\n\r\n")
+        body.appendUTF8(text)
+        body.appendUTF8("\r\n")
 
         for attachment in attachments {
             let safeFilename = attachment.filename.replacingOccurrences(of: "\"", with: "")
-            body.append("--\(boundary)\r\n")
-            body.append("Content-Disposition: form-data; name=\"files\"; filename=\"\(safeFilename)\"\r\n")
-            body.append("Content-Type: \(attachment.mimeType)\r\n\r\n")
+            body.appendUTF8("--\(boundary)\r\n")
+            body.appendUTF8("Content-Disposition: form-data; name=\"files\"; filename=\"\(safeFilename)\"\r\n")
+            body.appendUTF8("Content-Type: \(attachment.mimeType)\r\n\r\n")
             body.append(attachment.data)
-            body.append("\r\n")
+            body.appendUTF8("\r\n")
         }
-        body.append("--\(boundary)--\r\n")
+        body.appendUTF8("--\(boundary)--\r\n")
 
         var request = URLRequest(
             url: baseURL.appendingPathComponent("imports/email/"),
@@ -63,7 +63,7 @@ extension APIClient {
 }
 
 private extension Data {
-    mutating func append(_ string: String) {
+    mutating func appendUTF8(_ string: String) {
         append(string.data(using: .utf8) ?? Data())
     }
 }
