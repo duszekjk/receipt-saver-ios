@@ -227,9 +227,7 @@ struct DashboardView: View {
         showRetryButton = false
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 7_000_000_000)
-            if !uploadStatus.isEmpty {
-                showRetryButton = true
-            }
+            if !uploadStatus.isEmpty { showRetryButton = true }
         }
     }
 
@@ -331,15 +329,98 @@ struct SubcategoryDetailsView: View {
     let details: SubcategoryDetails?
     let error: String
     let displayName: (String) -> String
+
     var body: some View {
         NavigationView {
             List {
-                if !error.isEmpty { Text("Nie udało się pobrać szczegółów: \(error)") }
-                else if let details = details {
-                    if details.items.isEmpty { Text("Brak pozycji w tej subkategorii.") }
-                    else { ForEach(details.items) { item in VStack(alignment: .leading, spacing: 4) { Text(displayName(item.name)).font(.headline); if !item.merchant.isEmpty { Text(item.merchant).font(.caption).foregroundColor(.secondary) }; Text("\(item.count) pozycji • \(String(format: "%.2f", item.spent)) zł").font(.subheadline).foregroundColor(.secondary) } } }
-                } else { ProgressView("Wczytuję szczegóły...") }
-            }.navigationTitle(title)
-        }.navigationViewStyle(.stack)
+                if !error.isEmpty {
+                    Text("Nie udało się pobrać szczegółów: \(error)")
+                } else if let details = details {
+                    if details.items.isEmpty {
+                        Text("Brak pozycji w tej subkategorii.")
+                    } else {
+                        ForEach(details.items) { item in
+                            NavigationLink(destination: SubcategoryPurchaseView(item: item, displayName: displayName)) {
+                                VStack(alignment: .leading, spacing: 5) {
+                                    Text(displayName(item.name)).font(.headline)
+                                    if !item.merchant.isEmpty {
+                                        Text(item.merchant).font(.caption).foregroundColor(.secondary).lineLimit(2)
+                                    }
+                                    Text("\(item.count) pozycji • \(String(format: "%.2f", item.spent)) zł")
+                                        .font(.subheadline)
+                                        .foregroundColor(.secondary)
+                                }
+                                .padding(.vertical, 4)
+                            }
+                        }
+                    }
+                } else {
+                    ProgressView("Wczytuję szczegóły...")
+                }
+            }
+            .navigationTitle(title)
+        }
+        .navigationViewStyle(.stack)
+    }
+}
+
+private struct SubcategoryPurchaseView: View {
+    let item: SubcategoryDetailRow
+    let displayName: (String) -> String
+
+    var body: some View {
+        List {
+            Section {
+                HStack {
+                    Text("Łącznie")
+                    Spacer()
+                    Text(String(format: "%.2f zł", item.spent))
+                }
+                HStack {
+                    Text("Liczba pozycji")
+                    Spacer()
+                    Text("\(item.count)")
+                }
+            }
+
+            Section("Konkretne zakupy") {
+                if item.details.isEmpty {
+                    Text("Brak dodatkowych danych dla tej pozycji.")
+                        .foregroundColor(.secondary)
+                } else {
+                    ForEach(item.details) { detail in
+                        VStack(alignment: .leading, spacing: 7) {
+                            Text(displayName(detail.name)).font(.headline)
+                            if !detail.merchant.isEmpty { Text(detail.merchant).font(.subheadline) }
+                            Text(String(format: "%.2f zł", detail.spent)).font(.headline)
+                            if !detail.date.isEmpty { Text("Data: \(formattedDate(detail.date))").font(.caption).foregroundColor(.secondary) }
+                            Text(detail.origin == "receipt" ? "Źródło: paragon" : "Źródło: transakcja bankowa")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            if let quantity = detail.quantity { Text("Ilość: \(formattedNumber(quantity))").font(.caption) }
+                            if let unitPrice = detail.unit_price { Text("Cena jednostkowa: \(String(format: "%.2f", unitPrice)) zł").font(.caption) }
+                            if let regularPrice = detail.regular_price { Text("Cena regularna: \(String(format: "%.2f", regularPrice)) zł").font(.caption) }
+                            if detail.discount_amount > 0 { Text("Rabat: \(String(format: "%.2f", detail.discount_amount)) zł").font(.caption) }
+                            if !detail.promotion_name.isEmpty { Text("Promocja: \(detail.promotion_name)").font(.caption) }
+                        }
+                        .padding(.vertical, 5)
+                    }
+                }
+            }
+        }
+        .navigationTitle(displayName(item.name))
+    }
+
+    private func formattedDate(_ value: String) -> String {
+        let iso = ISO8601DateFormatter()
+        guard let date = iso.date(from: value) else { return value }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "pl_PL")
+        formatter.dateFormat = "dd.MM.yyyy HH:mm"
+        return formatter.string(from: date)
+    }
+
+    private func formattedNumber(_ value: Double) -> String {
+        value.rounded() == value ? String(Int(value)) : String(format: "%.2f", value)
     }
 }
