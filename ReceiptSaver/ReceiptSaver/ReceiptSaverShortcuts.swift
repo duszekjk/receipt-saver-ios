@@ -16,10 +16,6 @@ struct AddToReceiptSaverIntent: AppIntent {
     @Parameter(title: "Załączniki")
     var files: [IntentFile]?
 
-    static var parameterSummary: some ParameterSummary {
-        Summary("Dodaj do Receipt Saver \(.$text) \(.$files)")
-    }
-
     func perform() async throws -> some IntentResult & ProvidesDialog {
         var attachments: [EmailImportAttachment] = []
         for file in files ?? [] {
