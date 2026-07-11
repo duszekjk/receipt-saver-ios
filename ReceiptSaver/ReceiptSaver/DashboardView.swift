@@ -367,9 +367,20 @@ struct SubcategoryDetailsView: View {
 private struct SubcategoryPurchaseView: View {
     let item: SubcategoryDetailRow
     let displayName: (String) -> String
+    @State private var selectedReceiptForEdit: Receipt?
+    @State private var editError = ""
+    @State private var loadingReceiptID: Int?
 
     var body: some View {
         List {
+            if !editError.isEmpty {
+                Section {
+                    Text(editError)
+                        .foregroundColor(.red)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
             Section {
                 HStack {
                     Text("Łącznie")
@@ -389,7 +400,7 @@ private struct SubcategoryPurchaseView: View {
                         .foregroundColor(.secondary)
                 } else {
                     ForEach(item.details) { detail in
-                        VStack(alignment: .leading, spacing: 7) {
+                        VStack(alignment: .leading, spacing: 9) {
                             Text(displayName(detail.name)).font(.headline)
                             if !detail.merchant.isEmpty { Text(detail.merchant).font(.subheadline) }
                             Text(String(format: "%.2f zł", detail.spent)).font(.headline)
@@ -402,13 +413,58 @@ private struct SubcategoryPurchaseView: View {
                             if let regularPrice = detail.regular_price { Text("Cena regularna: \(String(format: "%.2f", regularPrice)) zł").font(.caption) }
                             if detail.discount_amount > 0 { Text("Rabat: \(String(format: "%.2f", detail.discount_amount)) zł").font(.caption) }
                             if !detail.promotion_name.isEmpty { Text("Promocja: \(detail.promotion_name)").font(.caption) }
+
+                            if detail.origin == "receipt", let receiptID = detail.receipt_id {
+                                Button(action: { Task { await openReceiptEditor(receiptID: receiptID) } }) {
+                                    if loadingReceiptID == receiptID {
+                                        HStack {
+                                            ProgressView()
+                                            Text("Wczytuję paragon…")
+                                        }
+                                        .frame(maxWidth: .infinity, minHeight: 40)
+                                    } else {
+                                        Label("Edytuj nazwę, kwotę i kategorię", systemImage: "pencil")
+                                            .frame(maxWidth: .infinity, minHeight: 40)
+                                    }
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .disabled(loadingReceiptID != nil)
+                            }
                         }
-                        .padding(.vertical, 5)
+                        .padding(.vertical, 6)
                     }
                 }
             }
         }
         .navigationTitle(displayName(item.name))
+        .sheet(item: $selectedReceiptForEdit) { receipt in
+            ReceiptEditView(
+                receipt: receipt,
+                onSaved: { _ in
+                    selectedReceiptForEdit = nil
+                    editError = ""
+                },
+                onDeleted: {
+                    selectedReceiptForEdit = nil
+                }
+            )
+        }
+    }
+
+    private func openReceiptEditor(receiptID: Int) async {
+        loadingReceiptID = receiptID
+        editError = ""
+        defer { loadingReceiptID = nil }
+        do {
+            let receipts = try await APIClient.shared.receipts()
+            guard let receipt = receipts.first(where: { $0.id == receiptID }) else {
+                editError = "Nie znaleziono paragonu dla tej pozycji."
+                return
+            }
+            selectedReceiptForEdit = receipt
+        } catch {
+            editError = "Nie udało się otworzyć edycji paragonu: \(error.localizedDescription)"
+        }
     }
 
     private func formattedDate(_ value: String) -> String {
