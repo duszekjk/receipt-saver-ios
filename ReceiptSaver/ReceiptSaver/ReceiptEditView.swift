@@ -89,7 +89,7 @@ struct ReceiptEditView: View {
 
                 Section("Paragon") {
                     TextField("Sklep", text: $merchantName)
-                    TextField("Suma", text: $totalAmount)
+                    TextField("Suma paragonu", text: $totalAmount)
                         .keyboardType(.decimalPad)
                     TextField("Waluta", text: $currency)
                         .textInputAutocapitalization(.characters)
@@ -100,22 +100,44 @@ struct ReceiptEditView: View {
                     }
                 }
 
-                Section("Pozycje") {
+                Section {
+                    Text("Tutaj można poprawić błędnie odczytaną nazwę, kwotę, kategorię i podkategorię każdej pozycji.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+
+                Section("Pozycje paragonu") {
                     ForEach($items) { $item in
-                        DisclosureGroup(item.name.isEmpty ? "Nowa pozycja" : item.name) {
-                            TextField("Nazwa", text: $item.name)
-                            TextField("Ilość", text: $item.quantity).keyboardType(.decimalPad)
-                            TextField("Cena jednostkowa", text: $item.unitPrice).keyboardType(.decimalPad)
-                            TextField("Cena zapłacona", text: $item.paidPrice).keyboardType(.decimalPad)
-                            TextField("Cena regularna", text: $item.regularPrice).keyboardType(.decimalPad)
-                            TextField("Rabat", text: $item.discountAmount).keyboardType(.decimalPad)
-                            TextField("Promocja", text: $item.promotionName)
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack {
+                                Text(item.name.isEmpty ? "Nowa pozycja" : item.name)
+                                    .font(.headline)
+                                Spacer()
+                                Button(role: .destructive) {
+                                    items.removeAll { $0.id == item.id }
+                                } label: {
+                                    Image(systemName: "trash")
+                                }
+                                .buttonStyle(.borderless)
+                            }
+
+                            TextField("Nazwa produktu", text: $item.name)
+                            TextField("Cena zapłacona", text: $item.paidPrice)
+                                .keyboardType(.decimalPad)
                             TextField("Kategoria", text: $item.category)
                             TextField("Podkategoria", text: $item.subcategory)
-                            Toggle("Przecenione", isOn: $item.isDiscounted)
+
+                            DisclosureGroup("Pozostałe dane") {
+                                TextField("Ilość", text: $item.quantity).keyboardType(.decimalPad)
+                                TextField("Cena jednostkowa", text: $item.unitPrice).keyboardType(.decimalPad)
+                                TextField("Cena regularna", text: $item.regularPrice).keyboardType(.decimalPad)
+                                TextField("Rabat", text: $item.discountAmount).keyboardType(.decimalPad)
+                                TextField("Promocja", text: $item.promotionName)
+                                Toggle("Przecenione", isOn: $item.isDiscounted)
+                            }
                         }
+                        .padding(.vertical, 8)
                     }
-                    .onDelete { indexes in items.remove(atOffsets: indexes) }
 
                     Button(action: { items.append(EditableReceiptItem()) }) {
                         Label("Dodaj pozycję", systemImage: "plus")
@@ -152,6 +174,19 @@ struct ReceiptEditView: View {
         isSaving = true
         errorMessage = ""
         defer { isSaving = false }
+
+        guard !items.contains(where: { $0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) else {
+            errorMessage = "Każda pozycja musi mieć nazwę."
+            return
+        }
+        guard !items.contains(where: { $0.paidPrice.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) else {
+            errorMessage = "Każda pozycja musi mieć cenę zapłaconą."
+            return
+        }
+        guard !items.contains(where: { $0.category.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || $0.subcategory.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) else {
+            errorMessage = "Każda pozycja musi mieć kategorię i podkategorię."
+            return
+        }
 
         let payloadItems = items.map { item in
             ReceiptItemUpdatePayload(
