@@ -6,7 +6,7 @@ enum ReceiptCategoryCatalog {
         "Zdrowie": ["lekarz", "dentysta", "okulista", "rehabilitacja", "apteka", "leki", "suplementy", "sprzęt medyczny", "badania"],
         "Dom": ["chemia domowa", "środki czystości", "papier toaletowy", "ręczniki papierowe", "pranie", "kuchnia", "remont", "narzędzia", "ogród", "kwiaty", "dekoracje"],
         "Higiena": ["kosmetyki", "higiena osobista", "fryzjer"],
-        "Transport": ["paliwo", "parking", "komunikacja miejska", "taxi", "serwis samochodu"],
+        "Transport": ["paliwo", "parking", "komunikacja miejska", "taxi", "serwis samochodu", "opłaty drogowe", "autostrady", "winiety"],
         "Mieszkanie": ["prąd", "gaz", "woda", "internet", "telefon", "czynsz", "ogrzewanie", "śmieci"],
         "Restauracje": ["restauracja", "fast food", "kawiarnia", "cukiernia"],
         "Ubrania": ["odzież", "obuwie", "bielizna", "naprawa ubrań"],
