@@ -1,7 +1,7 @@
 import Foundation
 
 struct ReceiptItemUpdatePayload: Encodable {
-    let id: Int
+    let id: Int?
     let name: String
     let quantity: String?
     let unit_price: String?
@@ -25,8 +25,7 @@ struct ReceiptUpdatePayload: Encodable {
 
 extension APIClient {
     func updateReceipt(id: Int, payload: ReceiptUpdatePayload) async throws -> Receipt {
-        let encoder = JSONEncoder()
-        let body = try encoder.encode(payload)
+        let body = try JSONEncoder().encode(payload)
         var request = URLRequest(
             url: baseURL.appendingPathComponent("receipts/\(id)/edit/"),
             cachePolicy: .reloadIgnoringLocalCacheData,
