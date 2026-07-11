@@ -86,25 +86,7 @@ struct BankTransactionItemsEditView: View {
                                 TextField("Kwota", text: $item.amount)
                                     .keyboardType(.decimalPad)
 
-                                Picker("Kategoria", selection: $item.category) {
-                                    ForEach(categoryOptions(current: item.category), id: \.self) { category in
-                                        Text(category).tag(category)
-                                    }
-                                }
-                                .pickerStyle(.menu)
-                                .onChange(of: item.category) { newCategory in
-                                    let available = ReceiptCategoryCatalog.subcategories(for: newCategory)
-                                    if !available.contains(item.subcategory) {
-                                        item.subcategory = available.first ?? ""
-                                    }
-                                }
-
-                                Picker("Podkategoria", selection: $item.subcategory) {
-                                    ForEach(subcategoryOptions(category: item.category, current: item.subcategory), id: \.self) { subcategory in
-                                        Text(subcategory).tag(subcategory)
-                                    }
-                                }
-                                .pickerStyle(.menu)
+                                CategorySelectionField(category: $item.category, subcategory: $item.subcategory)
                             }
                             .padding(.vertical, 6)
                         }
@@ -194,22 +176,6 @@ struct BankTransactionItemsEditView: View {
                 subcategory: suggestion.subcategory
             ))
         }
-    }
-
-    private func categoryOptions(current: String) -> [String] {
-        var result = ReceiptCategoryCatalog.categoryNames
-        if !current.isEmpty && !result.contains(current) {
-            result.insert(current, at: 0)
-        }
-        return result
-    }
-
-    private func subcategoryOptions(category: String, current: String) -> [String] {
-        var result = ReceiptCategoryCatalog.subcategories(for: category)
-        if !current.isEmpty && !result.contains(current) {
-            result.insert(current, at: 0)
-        }
-        return result
     }
 
     private func load() async {
