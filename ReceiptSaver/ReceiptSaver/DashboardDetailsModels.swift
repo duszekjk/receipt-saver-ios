@@ -1,7 +1,7 @@
 import Foundation
 
 struct SubcategoryPurchaseDetail: Identifiable, Decodable {
-    var id: String { "\(receipt_id ?? -1)-\(date)-\(merchant)-\(spent)-\(name)" }
+    var id: String { "\(receipt_id ?? -1)-\(bank_transaction_id ?? -1)-\(date)-\(merchant)-\(spent)-\(name)" }
     let name: String
     let merchant: String
     let spent: Double
@@ -9,6 +9,7 @@ struct SubcategoryPurchaseDetail: Identifiable, Decodable {
     let origin: String
     let date: String
     let receipt_id: Int?
+    let bank_transaction_id: Int?
     let quantity: Double?
     let unit_price: Double?
     let regular_price: Double?
@@ -16,7 +17,7 @@ struct SubcategoryPurchaseDetail: Identifiable, Decodable {
     let promotion_name: String
 
     enum CodingKeys: String, CodingKey {
-        case name, merchant, spent, saved, date, receipt_id, quantity, unit_price, regular_price, discount_amount, promotion_name
+        case name, merchant, spent, saved, date, receipt_id, bank_transaction_id, quantity, unit_price, regular_price, discount_amount, promotion_name
         case origin = "source"
     }
 }
