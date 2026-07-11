@@ -161,7 +161,6 @@ struct ReceiptEditView: View {
                         }
                     }
                 }
-                .scrollDismissesKeyboard(.interactively)
             }
             .navigationTitle("Zweryfikuj paragon")
             .toolbar {
