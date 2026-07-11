@@ -46,7 +46,7 @@ final class APIClient {
         return (data, http)
     }
 
-    private func data(for request: URLRequest) async throws -> Data {
+    func data(for request: URLRequest) async throws -> Data {
         let (data, http) = try await response(for: request)
         if !(200...299).contains(http.statusCode) { throw APIError(statusCode: http.statusCode, body: String(data: data, encoding: .utf8) ?? "") }
         return data
