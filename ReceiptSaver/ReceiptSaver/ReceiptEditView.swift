@@ -128,44 +128,7 @@ struct ReceiptEditView: View {
                                 labeledTextField("Nazwa produktu", text: $item.name)
                                 labeledTextField("Cena zapłacona", text: $item.paidPrice, keyboard: .decimalPad)
 
-                                VStack(alignment: .leading, spacing: 6) {
-                                    Text("Kategoria")
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                    Picker("Kategoria", selection: $item.category) {
-                                        if !ReceiptCategoryCatalog.categoryNames.contains(item.category), !item.category.isEmpty {
-                                            Text(item.category).tag(item.category)
-                                        }
-                                        ForEach(ReceiptCategoryCatalog.categoryNames, id: \.self) { category in
-                                            Text(category).tag(category)
-                                        }
-                                    }
-                                    .pickerStyle(.menu)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .onChange(of: item.category) { newCategory in
-                                        let allowed = ReceiptCategoryCatalog.subcategories(for: newCategory)
-                                        if !allowed.contains(item.subcategory) {
-                                            item.subcategory = allowed.first ?? ""
-                                        }
-                                    }
-                                }
-
-                                VStack(alignment: .leading, spacing: 6) {
-                                    Text("Podkategoria")
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                    let subcategories = ReceiptCategoryCatalog.subcategories(for: item.category)
-                                    Picker("Podkategoria", selection: $item.subcategory) {
-                                        if !subcategories.contains(item.subcategory), !item.subcategory.isEmpty {
-                                            Text(item.subcategory).tag(item.subcategory)
-                                        }
-                                        ForEach(subcategories, id: \.self) { subcategory in
-                                            Text(subcategory).tag(subcategory)
-                                        }
-                                    }
-                                    .pickerStyle(.menu)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                }
+                                CategorySelectionField(category: $item.category, subcategory: $item.subcategory)
 
                                 DisclosureGroup("Pozostałe dane") {
                                     labeledTextField("Ilość", text: $item.quantity, keyboard: .decimalPad)
