@@ -1,5 +1,6 @@
 import Foundation
 import UIKit
+import ImageIO
 
 extension APIClient {
     func receiptPreview(receiptID: Int) async throws -> UIImage {
@@ -24,7 +25,23 @@ extension APIClient {
         guard (200...299).contains(http.statusCode) else {
             throw APIError(statusCode: http.statusCode, body: String(data: data, encoding: .utf8) ?? "")
         }
-        guard let image = UIImage(data: data) else { throw URLError(.cannotDecodeContentData) }
-        return image
+
+        // Creating and decompressing UIImage can be expensive on older devices. Keep
+        // the complete decode away from MainActor so opening the editor stays fluid.
+        return try await Task.detached(priority: .userInitiated) {
+            guard let source = CGImageSourceCreateWithData(data as CFData, nil) else {
+                throw URLError(.cannotDecodeContentData)
+            }
+            let options: [CFString: Any] = [
+                kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceCreateThumbnailWithTransform: true,
+                kCGImageSourceShouldCacheImmediately: true,
+                kCGImageSourceThumbnailMaxPixelSize: 1600
+            ]
+            guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
+                throw URLError(.cannotDecodeContentData)
+            }
+            return UIImage(cgImage: cgImage)
+        }.value
     }
 }
