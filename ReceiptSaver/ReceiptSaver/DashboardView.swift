@@ -15,9 +15,19 @@ struct DashboardView: View {
     @State private var selectedSubcategory: DashboardBarRow?
     @State private var subcategoryDetails: SubcategoryDetails?
     @State private var detailsError = ""
+    @State private var showAdvancedRange = false
+    @State private var customStart = Calendar.current.date(byAdding: .month, value: -1, to: Date()) ?? Date()
+    @State private var customEnd = Date()
+    @State private var averageMonths: Int? = nil
 
-    let periods = [("month", "Miesiąc"), ("last30", "30 dni"), ("last90", "90 dni")]
-    let limits = [5, 10, 15, 20]
+    private let periods = [
+        ("month", "Obecny miesiąc"),
+        ("30d", "Ostatnie 30 dni"),
+        ("90d", "Ostatnie 90 dni"),
+        ("year", "Obecny rok"),
+        ("12m", "Ostatnie 12 miesięcy")
+    ]
+    private let limits = [5, 10, 15, 20]
     private let accent = Color(red: 0.00, green: 0.36, blue: 0.20)
 
     var body: some View {
@@ -25,40 +35,18 @@ struct DashboardView: View {
             ZStack(alignment: .bottom) {
                 ScrollView(.vertical, showsIndicators: true) {
                     VStack(alignment: .leading, spacing: 16) {
-                        Picker("Zakres", selection: $period) {
-                            ForEach(periods, id: \.0) { key, label in Text(label).tag(key) }
-                        }
-                        .pickerStyle(.segmented)
-                        .onChange(of: period) { _ in Task { await loadDashboard() } }
+                        periodControl
 
                         if let dashboard = dashboard, period == "month" {
                             compactMonthPicker(dashboard.available_months)
                         }
 
                         if !uploadStatus.isEmpty || showRetryButton {
-                            VStack(alignment: .leading, spacing: 10) {
-                                if !uploadStatus.isEmpty {
-                                    Text(uploadStatus)
-                                        .font(.body)
-                                        .fixedSize(horizontal: false, vertical: true)
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                }
-                                if showRetryButton {
-                                    Button(action: { Task { await loadDashboard() } }) {
-                                        Label("Spróbuj ponownie", systemImage: "arrow.clockwise")
-                                            .frame(maxWidth: .infinity, minHeight: 42)
-                                    }
-                                    .buttonStyle(.borderedProminent)
-                                    .tint(accent)
-                                }
-                            }
-                            .padding()
-                            .background(Color.secondary.opacity(0.10))
-                            .clipShape(RoundedRectangle(cornerRadius: 14))
+                            statusPanel
                         }
 
                         if let dashboard = dashboard {
-                            Text(period == "month" ? "Podsumowanie za \(monthDisplay(dashboard.selected_month))" : timelineTitle())
+                            Text(summaryTitle(dashboard))
                                 .font(.title2)
                                 .fixedSize(horizontal: false, vertical: true)
                             cards(dashboard.cards)
@@ -70,13 +58,13 @@ struct DashboardView: View {
                             filterControls(dashboard.available_categories)
                             sectionHeader("Główne kategorie")
                             BarList(rows: dashboard.categories, maxValue: maxSpent(dashboard.categories), displayName: displayLabel, accent: accent)
-                            sectionHeader("Najdroższe produkty")
+                            sectionHeader(periodHasAverage ? "Produkty — średnio miesięcznie" : "Najdroższe produkty")
                             BarList(rows: dashboard.products, maxValue: maxSpent(dashboard.products), displayName: displayLabel, accent: accent)
                             sectionHeader("Sklepy i odbiorcy")
                             BarList(rows: dashboard.stores, maxValue: maxSpent(dashboard.stores), displayName: displayLabel, accent: accent)
-                            if period != "month", !dashboard.timeline.isEmpty {
-                                sectionHeader(timelineTitle())
-                                BarList(rows: dashboard.timeline, maxValue: maxSpent(dashboard.timeline), displayName: displayLabel, accent: accent)
+                            if period != "month", averageMonths == nil, !dashboard.timeline.isEmpty {
+                                sectionHeader("Wydatki według miesięcy")
+                                BarList(rows: dashboard.timeline, maxValue: maxSpent(dashboard.timeline), displayName: monthDisplay, accent: accent)
                             }
                         } else {
                             ProgressView("Wczytuję podsumowanie...")
@@ -106,13 +94,110 @@ struct DashboardView: View {
             .sheet(isPresented: $showScanner) {
                 DocumentScannerView(onImage: { image in Task { await upload(image) } }, onCancel: {})
             }
+            .sheet(isPresented: $showAdvancedRange) {
+                advancedRangeView
+            }
             .sheet(item: $selectedSubcategory) { row in
                 SubcategoryDetailsView(title: displayLabel(row.name), details: subcategoryDetails, error: detailsError, displayName: displayLabel)
             }
             .task { await loadDashboard() }
         }
-        .navigationViewStyle(.stack)
+        .navigationViewStyle(StackNavigationViewStyle())
     }
+
+    private var periodControl: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Zakres danych").font(.headline)
+            HStack {
+                Picker("Zakres", selection: $period) {
+                    ForEach(periods, id: \.0) { key, label in Text(label).tag(key) }
+                    if period == "custom" { Text("Własny zakres").tag("custom") }
+                }
+                .pickerStyle(.menu)
+                .onChange(of: period) { _ in
+                    averageMonths = nil
+                    Task { await loadDashboard() }
+                }
+                Spacer()
+                Button("Zaawansowane") { showAdvancedRange = true }
+                    .buttonStyle(.bordered)
+            }
+        }
+        .padding()
+        .background(Color.secondary.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
+
+    private var advancedRangeView: some View {
+        NavigationView {
+            Form {
+                Section("Własny zakres dat") {
+                    DatePicker("Od", selection: $customStart, displayedComponents: .date)
+                    DatePicker("Do", selection: $customEnd, in: customStart...Date(), displayedComponents: .date)
+                    Button("Pokaż ten zakres") {
+                        period = "custom"
+                        averageMonths = nil
+                        showAdvancedRange = false
+                        Task { await loadDashboard() }
+                    }
+                }
+                Section("Średnia miesięczna") {
+                    Text("Wartości wydatków i oszczędności są dzielone przez liczbę miesięcy.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    ForEach([12, 24, 36], id: \.self) { months in
+                        Button("Ostatnie \(months) miesięcy — średnia miesięczna") {
+                            let calendar = Calendar.current
+                            customEnd = Date()
+                            customStart = calendar.date(byAdding: .month, value: -months, to: Date()) ?? Date()
+                            period = "custom"
+                            averageMonths = months
+                            showAdvancedRange = false
+                            Task { await loadDashboard() }
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Zaawansowany zakres")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Zamknij") { showAdvancedRange = false }
+                }
+            }
+        }
+        .navigationViewStyle(StackNavigationViewStyle())
+    }
+
+    private var statusPanel: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if !uploadStatus.isEmpty {
+                Text(uploadStatus).fixedSize(horizontal: false, vertical: true)
+            }
+            if showRetryButton {
+                Button(action: { Task { await loadDashboard() } }) {
+                    Label("Spróbuj ponownie", systemImage: "arrow.clockwise")
+                        .frame(maxWidth: .infinity, minHeight: 42)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(accent)
+            }
+        }
+        .padding()
+        .background(Color.secondary.opacity(0.10))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
+
+    private var currentRange: DashboardRangeRequest {
+        DashboardRangeRequest(
+            period: period,
+            month: selectedMonth,
+            startDate: period == "custom" ? customStart : nil,
+            endDate: period == "custom" ? customEnd : nil,
+            averageMonths: averageMonths
+        )
+    }
+
+    private var periodHasAverage: Bool { averageMonths != nil }
 
     private func compactMonthPicker(_ months: [String]) -> some View {
         HStack(spacing: 12) {
@@ -124,7 +209,6 @@ struct DashboardView: View {
             .pickerStyle(.menu)
             .onChange(of: selectedMonth) { _ in Task { await loadDashboard() } }
         }
-        .frame(maxWidth: .infinity)
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
         .background(Color.secondary.opacity(0.08))
@@ -133,12 +217,11 @@ struct DashboardView: View {
 
     private func cards(_ cards: DashboardCards) -> some View {
         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-            StatCard(title: "Wydatki", value: "\(money(cards.spent)) zł")
-            StatCard(title: "Oszczędzono", value: "\(money(cards.saved)) zł")
-            StatCard(title: "Pozycje", value: "\(cards.receipt_count)")
+            StatCard(title: periodHasAverage ? "Wydatki / miesiąc" : "Wydatki", value: "\(money(cards.spent)) zł")
+            StatCard(title: periodHasAverage ? "Oszczędzono / miesiąc" : "Oszczędzono", value: "\(money(cards.saved)) zł")
+            StatCard(title: periodHasAverage ? "Paragony / miesiąc" : "Paragony", value: "\(cards.receipt_count)")
             StatCard(title: "Sklepy/odbiorcy", value: "\(cards.store_count)")
         }
-        .frame(maxWidth: .infinity)
     }
 
     private func filterControls(_ categories: [String]) -> some View {
@@ -160,20 +243,27 @@ struct DashboardView: View {
             .pickerStyle(.segmented)
             .onChange(of: limit) { _ in Task { await loadDashboard() } }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
         .padding()
         .background(Color.secondary.opacity(0.08))
         .clipShape(RoundedRectangle(cornerRadius: 14))
     }
 
-    private func sectionHeader(_ title: String) -> some View {
-        Text(title)
-            .font(.title2)
-            .fixedSize(horizontal: false, vertical: true)
-            .padding(.top, 4)
+    private func summaryTitle(_ dashboard: DashboardStats) -> String {
+        if let months = averageMonths { return "Średnia miesięczna z ostatnich \(months) miesięcy" }
+        switch period {
+        case "month": return "Podsumowanie za \(monthDisplay(dashboard.selected_month))"
+        case "30d": return "Ostatnie 30 dni"
+        case "90d": return "Ostatnie 90 dni"
+        case "year": return "Obecny rok"
+        case "12m": return "Ostatnie 12 miesięcy"
+        case "custom": return "Własny zakres dat"
+        default: return "Podsumowanie"
+        }
     }
 
-    private func timelineTitle() -> String { period == "last30" ? "Ostatnie 30 dni" : period == "last90" ? "Ostatnie 90 dni" : "Wydatki według miesięcy" }
+    private func sectionHeader(_ title: String) -> some View {
+        Text(title).font(.title2).fixedSize(horizontal: false, vertical: true).padding(.top, 4)
+    }
 
     private func monthDisplay(_ month: String) -> String {
         let parts = month.split(separator: "-")
@@ -183,13 +273,7 @@ struct DashboardView: View {
     }
 
     private func displayLabel(_ value: String) -> String {
-        if value.range(of: "[ąćęłńóśźżĄĆĘŁŃÓŚŹŻ]", options: .regularExpression) != nil { return value }
-        let key = value.lowercased().replacingOccurrences(of: " ", with: "_").replacingOccurrences(of: "-", with: "_")
-        let labels = [
-            "inne": "Inne", "paliwo": "Paliwo", "transport": "Transport", "zywnosc": "Żywność", "jedzenie": "Jedzenie", "zdrowie": "Zdrowie", "wizyta_u_lekarza": "Wizyta u lekarza", "leki": "Leki", "alkohol": "Alkohol", "alkohole": "Alkohole", "piwo": "Piwo", "wino": "Wino", "wodka": "Wódka", "mocny_alkohol": "Mocny alkohol", "hazard": "Hazard", "zaklady_bukmacherskie": "Zakłady bukmacherskie", "zaklady_sportowe": "Zakłady sportowe", "darowizny": "Darowizny", "dom": "Dom", "media": "Media", "telefon": "Telefon", "internet": "Internet", "restauracje": "Restauracje", "rozrywka": "Rozrywka", "ubrania": "Ubrania", "oszczednosci": "Oszczędności", "miod": "Miód", "roze": "Róże", "roza": "Róża", "kwiaty": "Kwiaty", "nabial": "Nabiał", "mieso": "Mięso", "wedliny": "Wędliny", "mrozonki": "Mrożonki", "slodycze": "Słodycze", "srodki_czystosci": "Środki czystości", "papier_toaletowy": "Papier toaletowy", "odziez": "Odzież", "ksiazki": "Książki", "rekodzielo": "Rękodzieło"
-        ]
-        if let label = labels[key] { return label }
-        return value.replacingOccurrences(of: "_", with: " ").capitalized
+        value.replacingOccurrences(of: "_", with: " ").capitalized
     }
 
     private func maxSpent(_ rows: [DashboardBarRow]) -> Double { max(rows.map(\.spent).max() ?? 1, 1) }
@@ -213,10 +297,12 @@ struct DashboardView: View {
     private func loadDashboard() async {
         showRetryButton = false
         do {
-            let result = try await APIClient.shared.dashboard(period: period, month: selectedMonth, category: categoryFilter, limit: limit)
+            let result = try await APIClient.shared.dashboard(range: currentRange, category: categoryFilter, limit: limit)
             dashboard = result
             uploadStatus = ""
-            if selectedMonth.isEmpty || !result.available_months.contains(selectedMonth) { selectedMonth = result.selected_month }
+            if period == "month", (selectedMonth.isEmpty || !result.available_months.contains(selectedMonth)) {
+                selectedMonth = result.selected_month
+            }
         } catch {
             uploadStatus = "Nie udało się pobrać dashboardu: \(errorMessage(error))"
             scheduleDashboardRetry()
@@ -234,7 +320,7 @@ struct DashboardView: View {
     private func loadSubcategoryDetails(_ row: DashboardBarRow) async {
         subcategoryDetails = nil
         detailsError = ""
-        do { subcategoryDetails = try await APIClient.shared.subcategoryDetails(month: selectedMonth, subcategory: row.name) }
+        do { subcategoryDetails = try await APIClient.shared.subcategoryDetails(range: currentRange, subcategory: row.name) }
         catch { detailsError = errorMessage(error) }
     }
 
@@ -276,35 +362,20 @@ struct BarList: View {
     var body: some View {
         VStack(spacing: 12) {
             if rows.isEmpty {
-                Text("Brak danych")
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding()
-                    .background(Color.secondary.opacity(0.06))
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                Text("Brak danych").frame(maxWidth: .infinity, alignment: .leading).padding().background(Color.secondary.opacity(0.06)).clipShape(RoundedRectangle(cornerRadius: 12))
             } else {
                 ForEach(rows) { row in
-                    Button(action: { onTap?(row) }) { bar(row) }
-                        .buttonStyle(.plain)
-                        .disabled(onTap == nil)
+                    Button(action: { onTap?(row) }) { bar(row) }.buttonStyle(.plain).disabled(onTap == nil)
                 }
             }
         }
-        .frame(maxWidth: .infinity)
     }
     private func bar(_ row: DashboardBarRow) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 8) {
-                Text(displayName(row.name))
-                    .font(.headline)
-                    .foregroundColor(.primary)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
+                Text(displayName(row.name)).font(.headline).foregroundColor(.primary).lineLimit(2)
                 Spacer(minLength: 8)
-                Text(String(format: "%.2f zł", row.spent))
-                    .font(.headline)
-                    .foregroundColor(.primary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.75)
+                Text(String(format: "%.2f zł", row.spent)).font(.headline).foregroundColor(.primary)
             }
             GeometryReader { geometry in
                 ZStack(alignment: .leading) {
@@ -317,7 +388,6 @@ struct BarList: View {
                 if onTap != nil { Spacer(); Text("Pokaż").font(.caption).foregroundColor(accent) }
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
         .padding()
         .background(Color.secondary.opacity(0.06))
         .clipShape(RoundedRectangle(cornerRadius: 12))
@@ -329,154 +399,52 @@ struct SubcategoryDetailsView: View {
     let details: SubcategoryDetails?
     let error: String
     let displayName: (String) -> String
-
     var body: some View {
         NavigationView {
             List {
-                if !error.isEmpty {
-                    Text("Nie udało się pobrać szczegółów: \(error)")
-                } else if let details = details {
-                    if details.items.isEmpty {
-                        Text("Brak pozycji w tej subkategorii.")
-                    } else {
+                if !error.isEmpty { Text("Nie udało się pobrać szczegółów: \(error)") }
+                else if let details = details {
+                    if details.items.isEmpty { Text("Brak pozycji w tej subkategorii.") }
+                    else {
                         ForEach(details.items) { item in
                             NavigationLink(destination: SubcategoryPurchaseView(item: item, displayName: displayName)) {
                                 VStack(alignment: .leading, spacing: 5) {
                                     Text(displayName(item.name)).font(.headline)
-                                    if !item.merchant.isEmpty {
-                                        Text(item.merchant).font(.caption).foregroundColor(.secondary).lineLimit(2)
-                                    }
-                                    Text("\(item.count) pozycji • \(String(format: "%.2f", item.spent)) zł")
-                                        .font(.subheadline)
-                                        .foregroundColor(.secondary)
-                                }
-                                .padding(.vertical, 4)
+                                    if !item.merchant.isEmpty { Text(item.merchant).font(.caption).foregroundColor(.secondary).lineLimit(2) }
+                                    Text("\(item.count) pozycji • \(String(format: "%.2f", item.spent)) zł").font(.subheadline).foregroundColor(.secondary)
+                                }.padding(.vertical, 4)
                             }
                         }
                     }
-                } else {
-                    ProgressView("Wczytuję szczegóły...")
-                }
-            }
-            .navigationTitle(title)
-        }
-        .navigationViewStyle(.stack)
+                } else { ProgressView("Wczytuję szczegóły...") }
+            }.navigationTitle(title)
+        }.navigationViewStyle(StackNavigationViewStyle())
     }
 }
 
 private struct SubcategoryPurchaseView: View {
     let item: SubcategoryDetailRow
     let displayName: (String) -> String
-    @State private var selectedReceiptForEdit: Receipt?
-    @State private var editError = ""
-    @State private var loadingReceiptID: Int?
-
     var body: some View {
         List {
-            if !editError.isEmpty {
-                Section {
-                    Text(editError)
-                        .foregroundColor(.red)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-
             Section {
-                HStack {
-                    Text("Łącznie")
-                    Spacer()
-                    Text(String(format: "%.2f zł", item.spent))
-                }
-                HStack {
-                    Text("Liczba pozycji")
-                    Spacer()
-                    Text("\(item.count)")
-                }
+                HStack { Text("Łącznie"); Spacer(); Text(String(format: "%.2f zł", item.spent)) }
+                HStack { Text("Liczba pozycji"); Spacer(); Text("\(item.count)") }
             }
-
             Section("Konkretne zakupy") {
-                if item.details.isEmpty {
-                    Text("Brak dodatkowych danych dla tej pozycji.")
-                        .foregroundColor(.secondary)
-                } else {
+                if item.details.isEmpty { Text("Brak dodatkowych danych dla tej pozycji.").foregroundColor(.secondary) }
+                else {
                     ForEach(item.details) { detail in
-                        VStack(alignment: .leading, spacing: 9) {
+                        VStack(alignment: .leading, spacing: 7) {
                             Text(displayName(detail.name)).font(.headline)
                             if !detail.merchant.isEmpty { Text(detail.merchant).font(.subheadline) }
                             Text(String(format: "%.2f zł", detail.spent)).font(.headline)
-                            if !detail.date.isEmpty { Text("Data: \(formattedDate(detail.date))").font(.caption).foregroundColor(.secondary) }
-                            Text(detail.origin == "receipt" ? "Źródło: paragon" : "Źródło: transakcja bankowa")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                            if let quantity = detail.quantity { Text("Ilość: \(formattedNumber(quantity))").font(.caption) }
-                            if let unitPrice = detail.unit_price { Text("Cena jednostkowa: \(String(format: "%.2f", unitPrice)) zł").font(.caption) }
-                            if let regularPrice = detail.regular_price { Text("Cena regularna: \(String(format: "%.2f", regularPrice)) zł").font(.caption) }
-                            if detail.discount_amount > 0 { Text("Rabat: \(String(format: "%.2f", detail.discount_amount)) zł").font(.caption) }
-                            if !detail.promotion_name.isEmpty { Text("Promocja: \(detail.promotion_name)").font(.caption) }
-
-                            if detail.origin == "receipt", let receiptID = detail.receipt_id {
-                                Button(action: { Task { await openReceiptEditor(receiptID: receiptID) } }) {
-                                    if loadingReceiptID == receiptID {
-                                        HStack {
-                                            ProgressView()
-                                            Text("Wczytuję paragon…")
-                                        }
-                                        .frame(maxWidth: .infinity, minHeight: 40)
-                                    } else {
-                                        Label("Edytuj nazwę, kwotę i kategorię", systemImage: "pencil")
-                                            .frame(maxWidth: .infinity, minHeight: 40)
-                                    }
-                                }
-                                .buttonStyle(.borderedProminent)
-                                .disabled(loadingReceiptID != nil)
-                            }
-                        }
-                        .padding(.vertical, 6)
+                            if !detail.date.isEmpty { Text("Data: \(detail.date)").font(.caption).foregroundColor(.secondary) }
+                            Text(detail.origin == "receipt" ? "Źródło: paragon" : "Źródło: transakcja bankowa").font(.caption).foregroundColor(.secondary)
+                        }.padding(.vertical, 5)
                     }
                 }
             }
-        }
-        .navigationTitle(displayName(item.name))
-        .sheet(item: $selectedReceiptForEdit) { receipt in
-            ReceiptEditView(
-                receipt: receipt,
-                onSaved: { _ in
-                    selectedReceiptForEdit = nil
-                    editError = ""
-                },
-                onDeleted: {
-                    selectedReceiptForEdit = nil
-                }
-            )
-        }
-    }
-
-    private func openReceiptEditor(receiptID: Int) async {
-        loadingReceiptID = receiptID
-        editError = ""
-        defer { loadingReceiptID = nil }
-        do {
-            let receipts = try await APIClient.shared.receipts()
-            guard let receipt = receipts.first(where: { $0.id == receiptID }) else {
-                editError = "Nie znaleziono paragonu dla tej pozycji."
-                return
-            }
-            selectedReceiptForEdit = receipt
-        } catch {
-            editError = "Nie udało się otworzyć edycji paragonu: \(error.localizedDescription)"
-        }
-    }
-
-    private func formattedDate(_ value: String) -> String {
-        let iso = ISO8601DateFormatter()
-        guard let date = iso.date(from: value) else { return value }
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "pl_PL")
-        formatter.dateFormat = "dd.MM.yyyy HH:mm"
-        return formatter.string(from: date)
-    }
-
-    private func formattedNumber(_ value: Double) -> String {
-        value.rounded() == value ? String(Int(value)) : String(format: "%.2f", value)
+        }.navigationTitle(displayName(item.name))
     }
 }
