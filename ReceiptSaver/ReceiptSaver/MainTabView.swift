@@ -17,6 +17,14 @@ struct MainTabView: View {
             }
 
             NavigationView {
+                BankTransactionsView()
+            }
+            .navigationViewStyle(.stack)
+            .tabItem {
+                Label("Transakcje", systemImage: "creditcard.fill")
+            }
+
+            NavigationView {
                 MatchReviewView()
             }
             .navigationViewStyle(.stack)
