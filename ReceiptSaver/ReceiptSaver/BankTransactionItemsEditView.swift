@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct BankTransactionItemsEditView: View {
     let transactionID: Int
@@ -34,12 +35,36 @@ struct BankTransactionItemsEditView: View {
                         }
                         detailRow("Kwota", "\(document.amount) \(document.currency)")
                         detailRow("Suma pozycji", "\(formattedTotal) \(document.currency)")
+                        if abs(remainingAmount) > 0.009 {
+                            detailRow("Pozostało", String(format: "%.2f %@", remainingAmount, document.currency))
+                        }
                     }
 
-                    Section {
-                        Text("Dodaj konkretne produkty lub usługi składające się na tę transakcję. Suma pozycji musi być równa kwocie transakcji.")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                    if !document.suggested_items.isEmpty {
+                        Section("Sugestie") {
+                            ForEach(document.suggested_items) { suggestion in
+                                VStack(alignment: .leading, spacing: 7) {
+                                    Text(suggestion.name)
+                                        .font(.headline)
+                                    Text("\(suggestion.category) › \(suggestion.subcategory)")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                    if !suggestion.reason.isEmpty {
+                                        Text(suggestion.reason)
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
+                                    Button {
+                                        addSuggestion(suggestion)
+                                    } label: {
+                                        Label("Dodaj tę pozycję", systemImage: "plus.circle.fill")
+                                            .frame(maxWidth: .infinity, minHeight: 38)
+                                    }
+                                    .buttonStyle(.bordered)
+                                }
+                                .padding(.vertical, 4)
+                            }
+                        }
                     }
 
                     Section("Produkty i usługi") {
@@ -56,17 +81,39 @@ struct BankTransactionItemsEditView: View {
                                     }
                                     .buttonStyle(.borderless)
                                 }
+
                                 TextField("Nazwa produktu lub usługi", text: $item.name)
                                 TextField("Kwota", text: $item.amount)
                                     .keyboardType(.decimalPad)
-                                TextField("Kategoria", text: $item.category)
-                                TextField("Podkategoria", text: $item.subcategory)
+
+                                Picker("Kategoria", selection: $item.category) {
+                                    ForEach(categoryOptions(current: item.category), id: \.self) { category in
+                                        Text(category).tag(category)
+                                    }
+                                }
+                                .pickerStyle(.menu)
+                                .onChange(of: item.category) { newCategory in
+                                    let available = ReceiptCategoryCatalog.subcategories(for: newCategory)
+                                    if !available.contains(item.subcategory) {
+                                        item.subcategory = available.first ?? ""
+                                    }
+                                }
+
+                                Picker("Podkategoria", selection: $item.subcategory) {
+                                    ForEach(subcategoryOptions(category: item.category, current: item.subcategory), id: \.self) { subcategory in
+                                        Text(subcategory).tag(subcategory)
+                                    }
+                                }
+                                .pickerStyle(.menu)
                             }
                             .padding(.vertical, 6)
                         }
 
                         Button {
-                            items.append(BankTransactionManualItem(name: "", amount: "", category: "", subcategory: ""))
+                            let initialAmount = items.isEmpty ? fullTransactionAmount : ""
+                            let category = ReceiptCategoryCatalog.categoryNames.first ?? ""
+                            let subcategory = ReceiptCategoryCatalog.subcategories(for: category).first ?? ""
+                            items.append(BankTransactionManualItem(name: "", amount: initialAmount, category: category, subcategory: subcategory))
                         } label: {
                             Label("Dodaj produkt lub usługę", systemImage: "plus")
                         }
@@ -108,11 +155,61 @@ struct BankTransactionItemsEditView: View {
         }
     }
 
-    private var formattedTotal: String {
-        let total = items.reduce(0.0) { result, item in
+    private var fullTransactionAmount: String {
+        document?.amount.replacingOccurrences(of: ",", with: ".") ?? ""
+    }
+
+    private var numericTransactionAmount: Double {
+        Double(fullTransactionAmount) ?? 0
+    }
+
+    private var numericItemsTotal: Double {
+        items.reduce(0.0) { result, item in
             result + (Double(item.amount.replacingOccurrences(of: ",", with: ".")) ?? 0)
         }
-        return String(format: "%.2f", total)
+    }
+
+    private var formattedTotal: String {
+        String(format: "%.2f", numericItemsTotal)
+    }
+
+    private var remainingAmount: Double {
+        max(0, numericTransactionAmount - numericItemsTotal)
+    }
+
+    private func addSuggestion(_ suggestion: BankTransactionSuggestedItem) {
+        let amount: String
+        if items.isEmpty {
+            amount = fullTransactionAmount
+        } else if remainingAmount > 0.009 {
+            amount = String(format: "%.2f", remainingAmount)
+        } else {
+            amount = ""
+        }
+        withAnimation(.easeInOut(duration: 0.2)) {
+            items.append(BankTransactionManualItem(
+                name: suggestion.name,
+                amount: amount,
+                category: suggestion.category,
+                subcategory: suggestion.subcategory
+            ))
+        }
+    }
+
+    private func categoryOptions(current: String) -> [String] {
+        var result = ReceiptCategoryCatalog.categoryNames
+        if !current.isEmpty && !result.contains(current) {
+            result.insert(current, at: 0)
+        }
+        return result
+    }
+
+    private func subcategoryOptions(category: String, current: String) -> [String] {
+        var result = ReceiptCategoryCatalog.subcategories(for: category)
+        if !current.isEmpty && !result.contains(current) {
+            result.insert(current, at: 0)
+        }
+        return result
     }
 
     private func load() async {
