@@ -13,12 +13,15 @@ struct MobileProfile: Codable {
 struct ReceiptItem: Identifiable, Codable {
     let id: Int
     let name: String
+    let quantity: String?
+    let unit_price: String?
     let paid_price: String?
     let regular_price: String?
     let discount_amount: String?
     let promotion_name: String?
     let is_discounted: Bool
     let category: String?
+    let subcategory: String?
 }
 
 struct Receipt: Identifiable, Codable {
@@ -27,6 +30,7 @@ struct Receipt: Identifiable, Codable {
     let purchased_at: String?
     let total_amount: String?
     let currency: String
+    let payment_method: String?
     let duplicate_of: Int?
     let discount_total: String?
     let items: [ReceiptItem]
