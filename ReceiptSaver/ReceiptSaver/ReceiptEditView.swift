@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 private struct EditableReceiptItem: Identifiable {
     let id: UUID
@@ -61,6 +62,11 @@ struct ReceiptEditView: View {
     @State private var errorMessage = ""
     @State private var isSaving = false
     @State private var showDeleteConfirmation = false
+    @State private var previewImage: UIImage?
+    @State private var previewError = ""
+    @State private var isLoadingPreview = false
+    @State private var showFullScreenPreview = false
+    @State private var keyboardVisible = false
 
     init(receipt: Receipt, onSaved: @escaping (Receipt) -> Void, onDeleted: @escaping () -> Void) {
         self.receipt = receipt
@@ -78,79 +84,86 @@ struct ReceiptEditView: View {
 
     var body: some View {
         NavigationView {
-            Form {
-                if !errorMessage.isEmpty {
-                    Section {
-                        Text(errorMessage)
-                            .foregroundColor(.red)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
+            VStack(spacing: 0) {
+                previewPanel
+                    .frame(height: keyboardVisible ? 122 : 260)
+                    .animation(.easeInOut(duration: 0.22), value: keyboardVisible)
 
-                Section("Paragon") {
-                    TextField("Sklep", text: $merchantName)
-                    TextField("Suma paragonu", text: $totalAmount)
-                        .keyboardType(.decimalPad)
-                    TextField("Waluta", text: $currency)
-                        .textInputAutocapitalization(.characters)
-                    TextField("Metoda płatności", text: $paymentMethod)
-                    Toggle("Data jest znana", isOn: $hasDate)
-                    if hasDate {
-                        DatePicker("Data i godzina", selection: $purchasedAt, in: Calendar.current.date(byAdding: .year, value: -1, to: Date())!...Date())
-                    }
-                }
-
-                Section {
-                    Text("Tutaj można poprawić błędnie odczytaną nazwę, kwotę, kategorię i podkategorię każdej pozycji.")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-
-                Section("Pozycje paragonu") {
-                    ForEach($items) { $item in
-                        VStack(alignment: .leading, spacing: 10) {
-                            HStack {
-                                Text(item.name.isEmpty ? "Nowa pozycja" : item.name)
-                                    .font(.headline)
-                                Spacer()
-                                Button(role: .destructive) {
-                                    items.removeAll { $0.id == item.id }
-                                } label: {
-                                    Image(systemName: "trash")
-                                }
-                                .buttonStyle(.borderless)
-                            }
-
-                            TextField("Nazwa produktu", text: $item.name)
-                            TextField("Cena zapłacona", text: $item.paidPrice)
-                                .keyboardType(.decimalPad)
-                            TextField("Kategoria", text: $item.category)
-                            TextField("Podkategoria", text: $item.subcategory)
-
-                            DisclosureGroup("Pozostałe dane") {
-                                TextField("Ilość", text: $item.quantity).keyboardType(.decimalPad)
-                                TextField("Cena jednostkowa", text: $item.unitPrice).keyboardType(.decimalPad)
-                                TextField("Cena regularna", text: $item.regularPrice).keyboardType(.decimalPad)
-                                TextField("Rabat", text: $item.discountAmount).keyboardType(.decimalPad)
-                                TextField("Promocja", text: $item.promotionName)
-                                Toggle("Przecenione", isOn: $item.isDiscounted)
-                            }
+                Form {
+                    if !errorMessage.isEmpty {
+                        Section {
+                            Text(errorMessage)
+                                .foregroundColor(.red)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
-                        .padding(.vertical, 8)
                     }
 
-                    Button(action: { items.append(EditableReceiptItem()) }) {
-                        Label("Dodaj pozycję", systemImage: "plus")
+                    Section("Paragon") {
+                        TextField("Sklep", text: $merchantName)
+                        TextField("Suma paragonu", text: $totalAmount)
+                            .keyboardType(.decimalPad)
+                        TextField("Waluta", text: $currency)
+                            .textInputAutocapitalization(.characters)
+                        TextField("Metoda płatności", text: $paymentMethod)
+                        Toggle("Data jest znana", isOn: $hasDate)
+                        if hasDate {
+                            DatePicker("Data i godzina", selection: $purchasedAt, in: Calendar.current.date(byAdding: .year, value: -1, to: Date())!...Date())
+                        }
                     }
-                }
 
-                Section {
-                    Button(role: .destructive, action: { showDeleteConfirmation = true }) {
-                        Label("Usuń paragon", systemImage: "trash")
+                    Section {
+                        Text("Porównuj dane z widocznym wyżej zdjęciem. Podczas pisania zdjęcie pozostaje na ekranie i automatycznie zmniejsza wysokość.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+
+                    Section("Pozycje paragonu") {
+                        ForEach($items) { $item in
+                            VStack(alignment: .leading, spacing: 10) {
+                                HStack {
+                                    Text(item.name.isEmpty ? "Nowa pozycja" : item.name)
+                                        .font(.headline)
+                                    Spacer()
+                                    Button(role: .destructive) {
+                                        items.removeAll { $0.id == item.id }
+                                    } label: {
+                                        Image(systemName: "trash")
+                                    }
+                                    .buttonStyle(.borderless)
+                                }
+
+                                TextField("Nazwa produktu", text: $item.name)
+                                TextField("Cena zapłacona", text: $item.paidPrice)
+                                    .keyboardType(.decimalPad)
+                                TextField("Kategoria", text: $item.category)
+                                TextField("Podkategoria", text: $item.subcategory)
+
+                                DisclosureGroup("Pozostałe dane") {
+                                    TextField("Ilość", text: $item.quantity).keyboardType(.decimalPad)
+                                    TextField("Cena jednostkowa", text: $item.unitPrice).keyboardType(.decimalPad)
+                                    TextField("Cena regularna", text: $item.regularPrice).keyboardType(.decimalPad)
+                                    TextField("Rabat", text: $item.discountAmount).keyboardType(.decimalPad)
+                                    TextField("Promocja", text: $item.promotionName)
+                                    Toggle("Przecenione", isOn: $item.isDiscounted)
+                                }
+                            }
+                            .padding(.vertical, 8)
+                        }
+
+                        Button(action: { items.append(EditableReceiptItem()) }) {
+                            Label("Dodaj pozycję", systemImage: "plus")
+                        }
+                    }
+
+                    Section {
+                        Button(role: .destructive, action: { showDeleteConfirmation = true }) {
+                            Label("Usuń paragon", systemImage: "trash")
+                        }
                     }
                 }
+                .scrollDismissesKeyboard(.interactively)
             }
-            .navigationTitle("Edytuj paragon")
+            .navigationTitle("Zweryfikuj paragon")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Anuluj") { dismiss() }
@@ -161,13 +174,90 @@ struct ReceiptEditView: View {
                     }
                     .disabled(isSaving)
                 }
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Gotowe") { hideKeyboard() }
+                }
             }
             .confirmationDialog("Usunąć ten paragon?", isPresented: $showDeleteConfirmation, titleVisibility: .visible) {
                 Button("Usuń paragon", role: .destructive) { Task { await deleteReceipt() } }
                 Button("Anuluj", role: .cancel) {}
             }
+            .sheet(isPresented: $showFullScreenPreview) {
+                NavigationView {
+                    Group {
+                        if let image = previewImage {
+                            ReceiptZoomImageView(image: image)
+                                .background(Color.black)
+                        } else {
+                            ProgressView()
+                        }
+                    }
+                    .navigationTitle("Zdjęcie paragonu")
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Zamknij") { showFullScreenPreview = false }
+                        }
+                    }
+                }
+                .navigationViewStyle(StackNavigationViewStyle())
+            }
+            .task { await loadPreview() }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+                keyboardVisible = true
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+                keyboardVisible = false
+            }
         }
         .navigationViewStyle(StackNavigationViewStyle())
+    }
+
+    private var previewPanel: some View {
+        ZStack(alignment: .bottomTrailing) {
+            Rectangle().fill(Color.secondary.opacity(0.08))
+
+            if let image = previewImage {
+                ReceiptZoomImageView(image: image)
+                    .padding(6)
+            } else if isLoadingPreview {
+                ProgressView("Pobieranie zdjęcia…")
+            } else {
+                VStack(spacing: 6) {
+                    Image(systemName: "doc.text.image")
+                    Text(previewError.isEmpty ? "Brak podglądu zdjęcia" : previewError)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+                .padding()
+            }
+
+            if previewImage != nil {
+                Button(action: { showFullScreenPreview = true }) {
+                    Label("Pełny ekran", systemImage: "arrow.up.left.and.arrow.down.right")
+                        .font(.caption)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
+                        .background(.thinMaterial)
+                        .clipShape(Capsule())
+                }
+                .padding(10)
+            }
+        }
+        .clipped()
+    }
+
+    private func loadPreview() async {
+        previewImage = nil
+        previewError = ""
+        isLoadingPreview = true
+        defer { isLoadingPreview = false }
+        do {
+            previewImage = try await APIClient.shared.receiptPreview(receiptID: receipt.id)
+        } catch {
+            previewError = "Nie udało się pobrać zdjęcia: \(error.localizedDescription)"
+        }
     }
 
     private func save() async {
@@ -233,6 +323,10 @@ struct ReceiptEditView: View {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    private func hideKeyboard() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
 
     private func emptyToNil(_ value: String) -> String? {
