@@ -25,15 +25,15 @@ struct BankTransactionItemsEditView: View {
                 if let document = document {
                     Section("Transakcja bankowa") {
                         if !document.merchant_name.isEmpty {
-                            LabeledContent("Firma", value: document.merchant_name)
+                            detailRow("Firma", document.merchant_name)
                         }
                         if !document.description.isEmpty {
                             Text(document.description)
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                         }
-                        LabeledContent("Kwota", value: "\(document.amount) \(document.currency)")
-                        LabeledContent("Suma pozycji", value: "\(formattedTotal) \(document.currency)")
+                        detailRow("Kwota", "\(document.amount) \(document.currency)")
+                        detailRow("Suma pozycji", "\(formattedTotal) \(document.currency)")
                     }
 
                     Section {
@@ -96,6 +96,16 @@ struct BankTransactionItemsEditView: View {
             .task { await load() }
         }
         .navigationViewStyle(StackNavigationViewStyle())
+    }
+
+    private func detailRow(_ label: String, _ value: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            Text(label)
+            Spacer(minLength: 12)
+            Text(value)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.trailing)
+        }
     }
 
     private var formattedTotal: String {
