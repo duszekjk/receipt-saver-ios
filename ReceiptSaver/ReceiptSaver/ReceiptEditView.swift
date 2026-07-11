@@ -41,8 +41,8 @@ private struct EditableReceiptItem: Identifiable {
         discountAmount = ""
         promotionName = ""
         isDiscounted = false
-        category = ""
-        subcategory = ""
+        category = ReceiptCategoryCatalog.categoryNames.first ?? ""
+        subcategory = ReceiptCategoryCatalog.subcategories(for: category).first ?? ""
     }
 }
 
@@ -99,30 +99,23 @@ struct ReceiptEditView: View {
                     }
 
                     Section("Paragon") {
-                        TextField("Sklep", text: $merchantName)
-                        TextField("Suma paragonu", text: $totalAmount)
-                            .keyboardType(.decimalPad)
-                        TextField("Waluta", text: $currency)
-                            .textInputAutocapitalization(.characters)
-                        TextField("Metoda płatności", text: $paymentMethod)
+                        labeledTextField("Sklep", text: $merchantName)
+                        labeledTextField("Suma paragonu", text: $totalAmount, keyboard: .decimalPad)
+                        labeledTextField("Waluta", text: $currency)
+                        labeledTextField("Metoda płatności", text: $paymentMethod)
                         Toggle("Data jest znana", isOn: $hasDate)
                         if hasDate {
                             DatePicker("Data i godzina", selection: $purchasedAt, in: Calendar.current.date(byAdding: .year, value: -1, to: Date())!...Date())
                         }
                     }
 
-                    Section {
-                        Text("Porównuj dane z widocznym wyżej zdjęciem. Podczas pisania zdjęcie pozostaje na ekranie i automatycznie zmniejsza wysokość.")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-
                     Section("Pozycje paragonu") {
                         ForEach($items) { $item in
-                            VStack(alignment: .leading, spacing: 10) {
-                                HStack {
+                            VStack(alignment: .leading, spacing: 12) {
+                                HStack(alignment: .top) {
                                     Text(item.name.isEmpty ? "Nowa pozycja" : item.name)
                                         .font(.headline)
+                                        .fixedSize(horizontal: false, vertical: true)
                                     Spacer()
                                     Button(role: .destructive) {
                                         items.removeAll { $0.id == item.id }
@@ -132,22 +125,58 @@ struct ReceiptEditView: View {
                                     .buttonStyle(.borderless)
                                 }
 
-                                TextField("Nazwa produktu", text: $item.name)
-                                TextField("Cena zapłacona", text: $item.paidPrice)
-                                    .keyboardType(.decimalPad)
-                                TextField("Kategoria", text: $item.category)
-                                TextField("Podkategoria", text: $item.subcategory)
+                                labeledTextField("Nazwa produktu", text: $item.name)
+                                labeledTextField("Cena zapłacona", text: $item.paidPrice, keyboard: .decimalPad)
+
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text("Kategoria")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                    Picker("Kategoria", selection: $item.category) {
+                                        if !ReceiptCategoryCatalog.categoryNames.contains(item.category), !item.category.isEmpty {
+                                            Text(item.category).tag(item.category)
+                                        }
+                                        ForEach(ReceiptCategoryCatalog.categoryNames, id: \.self) { category in
+                                            Text(category).tag(category)
+                                        }
+                                    }
+                                    .pickerStyle(.menu)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .onChange(of: item.category) { newCategory in
+                                        let allowed = ReceiptCategoryCatalog.subcategories(for: newCategory)
+                                        if !allowed.contains(item.subcategory) {
+                                            item.subcategory = allowed.first ?? ""
+                                        }
+                                    }
+                                }
+
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text("Podkategoria")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                    let subcategories = ReceiptCategoryCatalog.subcategories(for: item.category)
+                                    Picker("Podkategoria", selection: $item.subcategory) {
+                                        if !subcategories.contains(item.subcategory), !item.subcategory.isEmpty {
+                                            Text(item.subcategory).tag(item.subcategory)
+                                        }
+                                        ForEach(subcategories, id: \.self) { subcategory in
+                                            Text(subcategory).tag(subcategory)
+                                        }
+                                    }
+                                    .pickerStyle(.menu)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                }
 
                                 DisclosureGroup("Pozostałe dane") {
-                                    TextField("Ilość", text: $item.quantity).keyboardType(.decimalPad)
-                                    TextField("Cena jednostkowa", text: $item.unitPrice).keyboardType(.decimalPad)
-                                    TextField("Cena regularna", text: $item.regularPrice).keyboardType(.decimalPad)
-                                    TextField("Rabat", text: $item.discountAmount).keyboardType(.decimalPad)
-                                    TextField("Promocja", text: $item.promotionName)
+                                    labeledTextField("Ilość", text: $item.quantity, keyboard: .decimalPad)
+                                    labeledTextField("Cena jednostkowa", text: $item.unitPrice, keyboard: .decimalPad)
+                                    labeledTextField("Cena regularna", text: $item.regularPrice, keyboard: .decimalPad)
+                                    labeledTextField("Rabat", text: $item.discountAmount, keyboard: .decimalPad)
+                                    labeledTextField("Promocja", text: $item.promotionName)
                                     Toggle("Przecenione", isOn: $item.isDiscounted)
                                 }
                             }
-                            .padding(.vertical, 8)
+                            .padding(.vertical, 10)
                         }
 
                         Button(action: { items.append(EditableReceiptItem()) }) {
@@ -210,6 +239,16 @@ struct ReceiptEditView: View {
             }
         }
         .navigationViewStyle(StackNavigationViewStyle())
+    }
+
+    private func labeledTextField(_ label: String, text: Binding<String>, keyboard: UIKeyboardType = .default) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(label)
+                .font(.caption)
+                .foregroundColor(.secondary)
+            TextField(label, text: text)
+                .keyboardType(keyboard)
+        }
     }
 
     private var previewPanel: some View {
