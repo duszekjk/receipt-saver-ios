@@ -12,12 +12,14 @@ struct BankTransactionManualItem: Identifiable, Codable {
     }
 }
 
-struct BankTransactionItemsDocument: Codable {
+struct BankTransactionItemsDocument: Identifiable, Codable {
+    var id: Int { transaction_id }
     let transaction_id: Int
     let merchant_name: String
     let description: String
     let amount: String
     let currency: String
+    let date: String
     let items: [BankTransactionManualItem]
 }
 
@@ -26,6 +28,24 @@ private struct BankTransactionItemsUpdate: Encodable {
 }
 
 extension APIClient {
+    func editableBankTransactions() async throws -> [BankTransactionItemsDocument] {
+        var request = URLRequest(
+            url: baseURL.appendingPathComponent("bank/transactions/"),
+            cachePolicy: .reloadIgnoringLocalCacheData,
+            timeoutInterval: 120
+        )
+        request.httpMethod = "GET"
+        if let credentials = CredentialStore.shared.load() {
+            HMACSigner.sign(request: &request, credentials: credentials, body: nil)
+        }
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else { throw URLError(.badServerResponse) }
+        guard (200...299).contains(http.statusCode) else {
+            throw APIError(statusCode: http.statusCode, body: String(data: data, encoding: .utf8) ?? "")
+        }
+        return try JSONDecoder().decode([BankTransactionItemsDocument].self, from: data)
+    }
+
     func bankTransactionItems(transactionID: Int) async throws -> BankTransactionItemsDocument {
         var request = URLRequest(
             url: baseURL.appendingPathComponent("bank/transactions/\(transactionID)/items/"),
