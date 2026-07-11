@@ -12,6 +12,14 @@ struct BankTransactionManualItem: Identifiable, Codable {
     }
 }
 
+struct BankTransactionSuggestedItem: Identifiable, Codable {
+    var id: String { name + "-" + category + "-" + subcategory }
+    let name: String
+    let category: String
+    let subcategory: String
+    let reason: String
+}
+
 struct BankTransactionItemsDocument: Identifiable, Codable {
     var id: Int { transaction_id }
     let transaction_id: Int
@@ -21,6 +29,7 @@ struct BankTransactionItemsDocument: Identifiable, Codable {
     let currency: String
     let date: String
     let items: [BankTransactionManualItem]
+    let suggested_items: [BankTransactionSuggestedItem]
 }
 
 private struct BankTransactionItemsUpdate: Encodable {
@@ -43,7 +52,9 @@ extension APIClient {
         guard (200...299).contains(http.statusCode) else {
             throw APIError(statusCode: http.statusCode, body: String(data: data, encoding: .utf8) ?? "")
         }
-        return try JSONDecoder().decode([BankTransactionItemsDocument].self, from: data)
+        return try await Task.detached(priority: .userInitiated) {
+            try JSONDecoder().decode([BankTransactionItemsDocument].self, from: data)
+        }.value
     }
 
     func bankTransactionItems(transactionID: Int) async throws -> BankTransactionItemsDocument {
@@ -61,11 +72,15 @@ extension APIClient {
         guard (200...299).contains(http.statusCode) else {
             throw APIError(statusCode: http.statusCode, body: String(data: data, encoding: .utf8) ?? "")
         }
-        return try JSONDecoder().decode(BankTransactionItemsDocument.self, from: data)
+        return try await Task.detached(priority: .userInitiated) {
+            try JSONDecoder().decode(BankTransactionItemsDocument.self, from: data)
+        }.value
     }
 
     func updateBankTransactionItems(transactionID: Int, items: [BankTransactionManualItem]) async throws -> BankTransactionItemsDocument {
-        let body = try JSONEncoder().encode(BankTransactionItemsUpdate(items: items))
+        let body = try await Task.detached(priority: .userInitiated) {
+            try JSONEncoder().encode(BankTransactionItemsUpdate(items: items))
+        }.value
         var request = URLRequest(
             url: baseURL.appendingPathComponent("bank/transactions/\(transactionID)/items/"),
             cachePolicy: .reloadIgnoringLocalCacheData,
@@ -82,6 +97,8 @@ extension APIClient {
         guard (200...299).contains(http.statusCode) else {
             throw APIError(statusCode: http.statusCode, body: String(data: data, encoding: .utf8) ?? "")
         }
-        return try JSONDecoder().decode(BankTransactionItemsDocument.self, from: data)
+        return try await Task.detached(priority: .userInitiated) {
+            try JSONDecoder().decode(BankTransactionItemsDocument.self, from: data)
+        }.value
     }
 }
