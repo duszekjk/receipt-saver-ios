@@ -2,39 +2,94 @@ import AVFoundation
 import SwiftUI
 
 struct QRLoginView: View {
-    @Binding var isLoggedIn: Bool
-    @State private var status = "Zeskanuj kod QR z panelu admina."
-    @State private var showScanner = true
+    @ObservedObject var accessStore: AppAccessStore
+    @State private var status = "Aplikacja jest dostępna na zaproszenie."
+    @State private var showScanner = false
+    @State private var showHelp = false
 
     var body: some View {
-        VStack(spacing: 24) {
-            Text("Logowanie")
-                .font(.largeTitle)
-                .bold()
+        ScrollView {
+            VStack(spacing: 22) {
+                Image(systemName: "doc.text.magnifyingglass")
+                    .font(.system(size: 54))
+                    .foregroundColor(.accentColor)
+                    .padding(.top, 28)
 
-            Text(status)
-                .font(.title3)
-                .multilineTextAlignment(.center)
+                Text("Receipt Saver")
+                    .font(.largeTitle)
+                    .bold()
+
+                Text(status)
+                    .font(.title3)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
+
+                if showScanner {
+                    QRScannerView { code in
+                        handle(code)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 320, maxHeight: 420)
+                    .clipShape(RoundedRectangle(cornerRadius: 18))
+                    .padding(.horizontal)
+                }
+
+                Button {
+                    if showScanner {
+                        status = "Zeskanuj kod QR otrzymany od administratora."
+                        showScanner = false
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                            showScanner = true
+                        }
+                    } else {
+                        status = "Zeskanuj kod QR otrzymany od administratora."
+                        showScanner = true
+                    }
+                } label: {
+                    Label(showScanner ? "Spróbuj ponownie" : "Zaloguj się kodem QR", systemImage: "qrcode.viewfinder")
+                        .frame(maxWidth: .infinity, minHeight: 46)
+                }
+                .buttonStyle(.borderedProminent)
                 .padding(.horizontal)
 
-            if showScanner {
-                QRScannerView { code in
-                    handle(code)
+                Button {
+                    accessStore.enterGuestMode()
+                } label: {
+                    Text("Korzystaj jako gość")
+                        .frame(maxWidth: .infinity, minHeight: 46)
                 }
-                .frame(maxWidth: .infinity, maxHeight: 420)
-                .clipShape(RoundedRectangle(cornerRadius: 18))
-                .padding()
-            }
+                .buttonStyle(.bordered)
+                .padding(.horizontal)
 
-            Button("Spróbuj ponownie") {
-                status = "Zeskanuj kod QR z panelu admina."
-                showScanner = false
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { showScanner = true }
+                Button("Jak uzyskać dostęp?") {
+                    showHelp = true
+                }
+                .font(.footnote)
+
+                Text("Tryb gościa działa lokalnie, nie tworzy konta Django i nie uzyskuje dostępu do prywatnych danych serwera.")
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 28)
+                    .padding(.bottom, 24)
             }
-            .font(.title2)
-            .buttonStyle(.borderedProminent)
         }
-        .padding()
+        .sheet(isPresented: $showHelp) {
+            NavigationView {
+                List {
+                    Section("Dostęp na zaproszenie") {
+                        Text("Pełne konto jest tworzone przez administratora aplikacji. Po otrzymaniu kodu QR wybierz „Zaloguj się kodem QR” i zeskanuj kod.")
+                        Text("Bez zaproszenia można uruchomić lokalny tryb gościa z przykładowymi danymi. Ten tryb nie łączy się z prywatnym serwerem.")
+                    }
+                }
+                .navigationTitle("Pomoc")
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Zamknij") { showHelp = false }
+                    }
+                }
+            }
+            .navigationViewStyle(StackNavigationViewStyle())
+        }
     }
 
     private func handle(_ code: String) {
@@ -47,7 +102,7 @@ struct QRLoginView: View {
         do {
             try CredentialStore.shared.save(AppCredentials(payload: payload))
             status = "Zalogowano."
-            isLoggedIn = true
+            accessStore.completeLogin()
         } catch {
             status = "Nie udało się zapisać tokenu w Keychain."
         }
