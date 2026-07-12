@@ -19,10 +19,8 @@ struct ReceiptSaverApp: App {
         WindowGroup {
             Group {
                 switch accessStore.mode {
-                case .signedIn:
+                case .signedIn, .guest:
                     MainTabView()
-                case .guest:
-                    GuestMainView(accessStore: accessStore)
                 case .signedOut:
                     QRLoginView(accessStore: accessStore)
                 }
