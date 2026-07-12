@@ -69,7 +69,7 @@ final class CredentialStore: CredentialStoring {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String
+            kSecAttrAccount as String: account
         ]
         SecItemDelete(query as CFDictionary)
     }
