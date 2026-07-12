@@ -13,20 +13,12 @@ struct UndoButtonView: View {
                 Button {
                     Task { await undo(label: status.label) }
                 } label: {
-                    Group {
-                        if isWorking {
-                            ProgressView()
-                                .controlSize(.small)
-                        } else {
-                            Image(systemName: "arrow.uturn.backward")
-                        }
+                    if isWorking {
+                        ProgressView()
+                    } else {
+                        Image(systemName: "arrow.uturn.backward")
                     }
-                    .frame(width: 32, height: 32)
                 }
-                .buttonStyle(.bordered)
-                .buttonBorderShape(.circle)
-                .controlSize(.small)
-                .tint(.primary)
                 .disabled(isWorking)
                 .accessibilityLabel("Cofnij")
                 .accessibilityHint(status.label)
