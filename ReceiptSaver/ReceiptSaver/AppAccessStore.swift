@@ -57,15 +57,9 @@ final class AppAccessStore: ObservableObject {
     func resetApplication() {
         credentialStore.delete()
         localCache.clear()
-
-        if let bundleIdentifier = Bundle.main.bundleIdentifier {
-            defaults.removePersistentDomain(forName: bundleIdentifier)
-        } else {
-            for key in defaults.dictionaryRepresentation().keys {
-                defaults.removeObject(forKey: key)
-            }
+        for key in defaults.dictionaryRepresentation().keys {
+            defaults.removeObject(forKey: key)
         }
-
         mode = .signedOut
     }
 
