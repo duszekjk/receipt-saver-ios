@@ -36,13 +36,13 @@ struct QRLoginView: View {
 
                 Button {
                     if showScanner {
-                        status = "Zeskanuj kod QR otrzymany od administratora."
+                        status = "Zeskanuj kod QR otrzymany w zaproszeniu."
                         showScanner = false
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                             showScanner = true
                         }
                     } else {
-                        status = "Zeskanuj kod QR otrzymany od administratora."
+                        status = "Zeskanuj kod QR otrzymany w zaproszeniu."
                         showScanner = true
                     }
                 } label: {
@@ -60,7 +60,7 @@ struct QRLoginView: View {
                         if isCreatingGuest {
                             ProgressView()
                         }
-                        Text(isCreatingGuest ? "Tworzenie dostępu gościa…" : "Korzystaj jako gość")
+                        Text(isCreatingGuest ? "Przygotowywanie dostępu…" : "Korzystaj jako gość")
                     }
                     .frame(maxWidth: .infinity, minHeight: 46)
                 }
@@ -73,7 +73,7 @@ struct QRLoginView: View {
                 }
                 .font(.footnote)
 
-                Text("Gość otrzymuje oddzielny profil Receipt Saver bez konta użytkownika Django. Skanowanie, import bankowy i synchronizacja działają normalnie, ale gość nie ma dostępu do panelu administracyjnego ani funkcji rodzinnych.")
+                Text("Bez zaproszenia możesz korzystać z aplikacji jako gość. Skanowanie paragonów, import wyciągów i synchronizacja są dostępne także w tym trybie.")
                     .font(.footnote)
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
@@ -85,8 +85,8 @@ struct QRLoginView: View {
             NavigationView {
                 List {
                     Section("Dostęp na zaproszenie") {
-                        Text("Pełne konto jest tworzone przez administratora aplikacji. Po otrzymaniu kodu QR wybierz „Zaloguj się kodem QR” i zeskanuj kod.")
-                        Text("Bez zaproszenia można utworzyć profil gościa. Profil gościa nie jest użytkownikiem Django, ale pozwala korzystać ze skanowania paragonów, importu wyciągów i pozostałych funkcji aplikacji.")
+                        Text("Po otrzymaniu zaproszenia wybierz „Zaloguj się kodem QR” i zeskanuj otrzymany kod.")
+                        Text("Bez zaproszenia możesz korzystać z aplikacji jako gość. Dane dodane w tym trybie pozostają przypisane do tego dostępu.")
                     }
                 }
                 .navigationTitle("Pomoc")
@@ -104,16 +104,16 @@ struct QRLoginView: View {
     private func createGuest() async {
         guard !isCreatingGuest else { return }
         isCreatingGuest = true
-        status = "Tworzę bezpieczny profil gościa…"
+        status = "Przygotowuję dostęp gościa…"
         defer { isCreatingGuest = false }
 
         do {
             let payload = try await APIClient.shared.registerGuest()
             try CredentialStore.shared.save(AppCredentials(payload: payload))
-            status = "Profil gościa został utworzony."
+            status = "Gotowe."
             accessStore.completeGuestRegistration()
         } catch {
-            status = "Nie udało się utworzyć profilu gościa: \(error.localizedDescription)"
+            status = "Nie udało się uruchomić trybu gościa: \(error.localizedDescription)"
         }
     }
 
@@ -129,7 +129,7 @@ struct QRLoginView: View {
             status = "Zalogowano."
             accessStore.completeLogin()
         } catch {
-            status = "Nie udało się zapisać tokenu w Keychain."
+            status = "Nie udało się zapisać danych logowania."
         }
     }
 }
