@@ -34,6 +34,14 @@ struct MainTabView: View {
                 .tabItem {
                     Label("Dopasowania", systemImage: "checkmark.seal.fill")
                 }
+
+                NavigationView {
+                    AccountSettingsView()
+                }
+                .navigationViewStyle(.stack)
+                .tabItem {
+                    Label("Ustawienia", systemImage: "gearshape")
+                }
             }
             .id(refreshID)
 
