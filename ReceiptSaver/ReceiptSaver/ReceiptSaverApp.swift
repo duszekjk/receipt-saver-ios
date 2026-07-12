@@ -5,10 +5,20 @@ import AppIntents
 
 @main
 struct ReceiptSaverApp: App {
-    @StateObject private var accessStore = AppAccessStore.shared
+    @StateObject private var accessStore: AppAccessStore
     @StateObject private var toastCenter = ToastCenter.shared
 
     init() {
+        if ProcessInfo.processInfo.arguments.contains("-reset-app-state") {
+            CredentialStore.shared.delete()
+            LocalCache.shared.clear()
+            if let bundleIdentifier = Bundle.main.bundleIdentifier {
+                UserDefaults.standard.removePersistentDomain(forName: bundleIdentifier)
+            }
+        }
+
+        _accessStore = StateObject(wrappedValue: AppAccessStore())
+
         #if canImport(AppIntents)
         if #available(iOS 16.0, macOS 13.0, *) {
             ReceiptSaverShortcuts.updateAppShortcutParameters()
@@ -26,6 +36,7 @@ struct ReceiptSaverApp: App {
                     QRLoginView(accessStore: accessStore)
                 }
             }
+            .environmentObject(accessStore)
             .environmentObject(toastCenter)
             .appToastOverlay(toastCenter)
             .tint(Color(red: 0.00, green: 0.36, blue: 0.20))
