@@ -12,6 +12,7 @@ struct ReceiptSaverApp: App {
         if ProcessInfo.processInfo.arguments.contains("-reset-app-state") {
             CredentialStore.shared.delete()
             LocalCache.shared.clear()
+            URLCache.shared.removeAllCachedResponses()
             if let bundleIdentifier = Bundle.main.bundleIdentifier {
                 UserDefaults.standard.removePersistentDomain(forName: bundleIdentifier)
             }
