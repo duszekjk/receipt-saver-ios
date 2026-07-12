@@ -5,71 +5,112 @@ struct UndoButtonView: View {
 
     @State private var status: UndoStatus?
     @State private var isWorking = false
-    @State private var errorMessage = ""
+    @State private var showInfo = false
+    @State private var toastMessage = ""
+    @State private var toastDismissTask: Task<Void, Never>?
 
     var body: some View {
-        VStack(alignment: .trailing, spacing: 6) {
+        VStack(alignment: .trailing, spacing: 8) {
             if let status = status, status.can_undo {
-                Button {
-                    Task { await undo() }
-                } label: {
-                    HStack(spacing: 8) {
-                        if isWorking {
-                            ProgressView()
-                        } else {
-                            Image(systemName: "arrow.uturn.backward")
-                        }
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(isWorking ? "Cofanie…" : "Cofnij")
+                undoControl(status: status)
+                    .popover(isPresented: $showInfo, arrowEdge: .top) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Cofnij")
                                 .font(.headline)
                             Text(status.label)
+                                .font(.subheadline)
+                            Text("Dostępnych cofnięć: \(status.remaining)")
                                 .font(.caption)
-                                .lineLimit(1)
-                            Text("Pozostało: \(status.remaining)")
-                                .font(.caption2)
                                 .foregroundColor(.secondary)
                         }
+                        .padding()
+                        .frame(maxWidth: 280, alignment: .leading)
                     }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 9)
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(isWorking)
-                .accessibilityLabel("Cofnij: \(status.label)")
             }
 
-            if !errorMessage.isEmpty {
-                Text(errorMessage)
+            if !toastMessage.isEmpty {
+                Text(toastMessage)
                     .font(.caption)
-                    .foregroundColor(.red)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
+                    .multilineTextAlignment(.leading)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
                     .background(.thinMaterial)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .shadow(radius: 3)
+                    .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
+        .animation(.easeInOut(duration: 0.2), value: toastMessage)
         .task { await reload() }
+        .onDisappear {
+            toastDismissTask?.cancel()
+        }
+    }
+
+    private func undoControl(status: UndoStatus) -> some View {
+        Group {
+            if isWorking {
+                ProgressView()
+                    .frame(width: 18, height: 18)
+                    .padding(9)
+            } else {
+                Image(systemName: "arrow.uturn.backward")
+                    .font(.body.weight(.semibold))
+                    .frame(width: 18, height: 18)
+                    .padding(9)
+                    .contentShape(Rectangle())
+                    .gesture(
+                        LongPressGesture(minimumDuration: 0.55)
+                            .exclusively(before: TapGesture())
+                            .onEnded { value in
+                                switch value {
+                                case .first:
+                                    showInfo = true
+                                case .second:
+                                    Task { await undo(label: status.label) }
+                                }
+                            }
+                    )
+            }
+        }
+        .background(.thinMaterial)
+        .clipShape(Circle())
+        .overlay(Circle().stroke(Color.secondary.opacity(0.18), lineWidth: 0.5))
+        .accessibilityLabel("Cofnij")
+        .accessibilityHint(status.label)
     }
 
     private func reload() async {
         do {
             status = try await APIClient.shared.undoStatus()
-            errorMessage = ""
         } catch {
             status = nil
         }
     }
 
-    private func undo() async {
+    private func undo(label: String) async {
         guard !isWorking else { return }
         isWorking = true
-        errorMessage = ""
         defer { isWorking = false }
+
         do {
             status = try await APIClient.shared.undoLastOperation()
             onUndone()
+            showToast("Cofnięto: \(label)")
         } catch {
-            errorMessage = error.localizedDescription
+            showToast(error.localizedDescription)
+        }
+    }
+
+    private func showToast(_ message: String) {
+        toastDismissTask?.cancel()
+        toastMessage = message
+        toastDismissTask = Task {
+            try? await Task.sleep(nanoseconds: 2_500_000_000)
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                toastMessage = ""
+            }
         }
     }
 }
