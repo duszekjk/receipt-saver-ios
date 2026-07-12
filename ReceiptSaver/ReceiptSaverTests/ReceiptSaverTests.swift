@@ -18,38 +18,17 @@ struct ReceiptSaverTests {
         #expect(fixture.store.mode == .guest)
     }
 
-    @Test func signOutRemovesCredentialsAndCache() {
-        let fixture = AccessStoreFixture(credentials: .test)
+    @Test func signOutRemovesAllLocalUserData() {
+        let fixture = AccessStoreFixture(credentials: .test, guest: true)
         fixture.defaults.set(Data([1, 2, 3]), forKey: "offline_receipts")
+        fixture.defaults.set(Data([4, 5, 6]), forKey: "offline_summaries_month")
+        fixture.defaults.set("value", forKey: "user_preference")
 
         fixture.store.signOut()
 
         #expect(fixture.store.mode == .signedOut)
         #expect(fixture.credentials.load() == nil)
-        #expect(fixture.defaults.data(forKey: "offline_receipts") == nil)
-    }
-
-    @Test func switchAccountReturnsToLoginScreen() {
-        let fixture = AccessStoreFixture(credentials: .test, guest: true)
-
-        fixture.store.switchAccount()
-
-        #expect(fixture.store.mode == .signedOut)
-        #expect(fixture.credentials.load() == nil)
-        #expect(fixture.defaults.bool(forKey: "receipt_saver_guest_mode") == false)
-    }
-
-    @Test func resetApplicationRemovesAllLocalState() {
-        let fixture = AccessStoreFixture(credentials: .test, guest: true)
-        fixture.defaults.set("value", forKey: "unrelated_test_setting")
-        fixture.defaults.set(Data([1, 2, 3]), forKey: "offline_receipts")
-
-        fixture.store.resetApplication()
-
-        #expect(fixture.store.mode == .signedOut)
-        #expect(fixture.credentials.load() == nil)
-        #expect(fixture.defaults.object(forKey: "unrelated_test_setting") == nil)
-        #expect(fixture.defaults.object(forKey: "offline_receipts") == nil)
+        #expect(fixture.defaults.dictionaryRepresentation().isEmpty)
     }
 }
 
