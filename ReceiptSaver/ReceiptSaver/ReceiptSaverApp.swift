@@ -6,6 +6,7 @@ import AppIntents
 @main
 struct ReceiptSaverApp: App {
     @StateObject private var accessStore = AppAccessStore.shared
+    @StateObject private var toastCenter = ToastCenter.shared
 
     init() {
         #if canImport(AppIntents)
@@ -25,6 +26,8 @@ struct ReceiptSaverApp: App {
                     QRLoginView(accessStore: accessStore)
                 }
             }
+            .environmentObject(toastCenter)
+            .appToastOverlay(toastCenter)
             .tint(Color(red: 0.00, green: 0.36, blue: 0.20))
         }
     }
