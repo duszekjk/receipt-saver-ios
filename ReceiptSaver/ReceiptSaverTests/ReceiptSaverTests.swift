@@ -1,16 +1,101 @@
-//
-//  ReceiptSaverTests.swift
-//  ReceiptSaverTests
-//
-//  Created by Jacek Kałużny on 6/18/26.
-//
-
 import Testing
+@testable import ReceiptSaver
 
+@MainActor
 struct ReceiptSaverTests {
-
-    @Test func example() async throws {
-        // Write your test here and use APIs like `#expect(...)` to check expected conditions.
+    @Test func startsSignedOutWithoutCredentials() {
+        let fixture = AccessStoreFixture(credentials: nil)
+        #expect(fixture.store.mode == .signedOut)
     }
 
+    @Test func restoresSignedInAccount() {
+        let fixture = AccessStoreFixture(credentials: .test)
+        #expect(fixture.store.mode == .signedIn)
+    }
+
+    @Test func restoresGuestAccount() {
+        let fixture = AccessStoreFixture(credentials: .test, guest: true)
+        #expect(fixture.store.mode == .guest)
+    }
+
+    @Test func signOutRemovesCredentialsAndCache() {
+        let fixture = AccessStoreFixture(credentials: .test)
+        fixture.defaults.set(Data([1, 2, 3]), forKey: "offline_receipts")
+
+        fixture.store.signOut()
+
+        #expect(fixture.store.mode == .signedOut)
+        #expect(fixture.credentials.load() == nil)
+        #expect(fixture.defaults.data(forKey: "offline_receipts") == nil)
+    }
+
+    @Test func switchAccountReturnsToLoginScreen() {
+        let fixture = AccessStoreFixture(credentials: .test, guest: true)
+
+        fixture.store.switchAccount()
+
+        #expect(fixture.store.mode == .signedOut)
+        #expect(fixture.credentials.load() == nil)
+        #expect(fixture.defaults.bool(forKey: "receipt_saver_guest_mode") == false)
+    }
+
+    @Test func resetApplicationRemovesAllLocalState() {
+        let fixture = AccessStoreFixture(credentials: .test, guest: true)
+        fixture.defaults.set("value", forKey: "unrelated_test_setting")
+        fixture.defaults.set(Data([1, 2, 3]), forKey: "offline_receipts")
+
+        fixture.store.resetApplication()
+
+        #expect(fixture.store.mode == .signedOut)
+        #expect(fixture.credentials.load() == nil)
+        #expect(fixture.defaults.object(forKey: "unrelated_test_setting") == nil)
+        #expect(fixture.defaults.object(forKey: "offline_receipts") == nil)
+    }
+}
+
+@MainActor
+private struct AccessStoreFixture {
+    let defaults: UserDefaults
+    let credentials: MemoryCredentialStore
+    let store: AppAccessStore
+
+    init(credentials: AppCredentials?, guest: Bool = false) {
+        let suiteName = "ReceiptSaverTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defaults.set(guest, forKey: "receipt_saver_guest_mode")
+
+        let credentialStore = MemoryCredentialStore(credentials)
+        self.defaults = defaults
+        self.credentials = credentialStore
+        self.store = AppAccessStore(
+            credentialStore: credentialStore,
+            defaults: defaults,
+            localCache: LocalCache(defaults: defaults)
+        )
+    }
+}
+
+private final class MemoryCredentialStore: CredentialStoring {
+    private var credentials: AppCredentials?
+
+    init(_ credentials: AppCredentials?) {
+        self.credentials = credentials
+    }
+
+    func load() -> AppCredentials? {
+        credentials
+    }
+
+    func save(_ credentials: AppCredentials) throws {
+        self.credentials = credentials
+    }
+
+    func delete() {
+        credentials = nil
+    }
+}
+
+private extension AppCredentials {
+    static let test = AppCredentials(deviceID: "test-device", secretKey: "test-secret")
 }
