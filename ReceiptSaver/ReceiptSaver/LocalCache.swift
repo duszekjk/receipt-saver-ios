@@ -2,11 +2,13 @@ import Foundation
 
 final class LocalCache {
     static let shared = LocalCache()
-    private let defaults = UserDefaults.standard
+    private let defaults: UserDefaults
     private let summariesPrefix = "offline_summaries_"
     private let receiptsKey = "offline_receipts"
 
-    private init() {}
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
 
     func saveSummaries(_ rows: [SummaryRow], period: String) {
         guard let data = try? JSONEncoder().encode(rows) else { return }
@@ -39,5 +41,12 @@ final class LocalCache {
         receipts.removeAll { $0.id == receipt.id }
         receipts.insert(receipt, at: 0)
         saveReceipts(receipts)
+    }
+
+    func clear() {
+        defaults.removeObject(forKey: receiptsKey)
+        for key in defaults.dictionaryRepresentation().keys where key.hasPrefix(summariesPrefix) {
+            defaults.removeObject(forKey: key)
+        }
     }
 }
