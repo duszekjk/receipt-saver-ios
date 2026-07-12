@@ -1,11 +1,13 @@
 import Foundation
 
 struct MobileProfile: Codable {
-    let user_id: Int
+    let user_id: Int?
     let username: String
     let is_superuser: Bool
     let profile_id: Int?
+    let profile_public_id: String?
     let display_name: String
+    let is_guest: Bool?
     let family_id: Int?
     let family_name: String
 }
