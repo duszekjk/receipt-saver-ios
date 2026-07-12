@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 
+
 enum AppAccessMode: Equatable {
     case signedOut
     case guest
@@ -47,26 +48,14 @@ final class AppAccessStore: ObservableObject {
     }
 
     func signOut() {
-        clearSession()
-    }
-
-    func switchAccount() {
-        clearSession()
-    }
-
-    func resetApplication() {
         credentialStore.delete()
         localCache.clear()
+        URLCache.shared.removeAllCachedResponses()
+
         for key in defaults.dictionaryRepresentation().keys {
             defaults.removeObject(forKey: key)
         }
-        mode = .signedOut
-    }
 
-    private func clearSession() {
-        credentialStore.delete()
-        defaults.set(false, forKey: guestKey)
-        localCache.clear()
         mode = .signedOut
     }
 }
