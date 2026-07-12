@@ -7,7 +7,7 @@ struct AppLoginPayload: Codable {
     let secret_key: String
 }
 
-struct AppCredentials: Codable {
+struct AppCredentials: Codable, Equatable {
     let deviceID: String
     let secretKey: String
 
@@ -15,9 +15,20 @@ struct AppCredentials: Codable {
         self.deviceID = payload.device_id
         self.secretKey = payload.secret_key
     }
+
+    init(deviceID: String, secretKey: String) {
+        self.deviceID = deviceID
+        self.secretKey = secretKey
+    }
 }
 
-final class CredentialStore {
+protocol CredentialStoring: AnyObject {
+    func load() -> AppCredentials?
+    func save(_ credentials: AppCredentials) throws
+    func delete()
+}
+
+final class CredentialStore: CredentialStoring {
     static let shared = CredentialStore()
     private let service = "ReceiptSaver"
     private let account = "AppCredentials"
@@ -25,7 +36,7 @@ final class CredentialStore {
     private init() {}
 
     func load() -> AppCredentials? {
-        var query: [String: Any] = [
+        let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
@@ -49,14 +60,16 @@ final class CredentialStore {
             kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
         ]
         let status = SecItemAdd(query as CFDictionary, nil)
-        guard status == errSecSuccess else { throw NSError(domain: NSOSStatusErrorDomain, code: Int(status)) }
+        guard status == errSecSuccess else {
+            throw NSError(domain: NSOSStatusErrorDomain, code: Int(status))
+        }
     }
 
     func delete() {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: account
+            kSecAttrAccount as String
         ]
         SecItemDelete(query as CFDictionary)
     }
