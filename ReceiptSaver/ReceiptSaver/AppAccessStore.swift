@@ -1,23 +1,35 @@
 import Foundation
 import Combine
 
-enum AppAccessMode {
+enum AppAccessMode: Equatable {
     case signedOut
     case guest
     case signedIn
 }
 
+@MainActor
 final class AppAccessStore: ObservableObject {
     static let shared = AppAccessStore()
 
     private let guestKey = "receipt_saver_guest_mode"
+    private let credentialStore: CredentialStoring
+    private let defaults: UserDefaults
+    private let localCache: LocalCache
 
     @Published private(set) var mode: AppAccessMode
 
-    private init() {
-        if CredentialStore.shared.load() == nil {
+    init(
+        credentialStore: CredentialStoring = CredentialStore.shared,
+        defaults: UserDefaults = .standard,
+        localCache: LocalCache = .shared
+    ) {
+        self.credentialStore = credentialStore
+        self.defaults = defaults
+        self.localCache = localCache
+
+        if credentialStore.load() == nil {
             mode = .signedOut
-        } else if UserDefaults.standard.bool(forKey: guestKey) {
+        } else if defaults.bool(forKey: guestKey) {
             mode = .guest
         } else {
             mode = .signedIn
@@ -25,22 +37,42 @@ final class AppAccessStore: ObservableObject {
     }
 
     func completeGuestRegistration() {
-        UserDefaults.standard.set(true, forKey: guestKey)
+        defaults.set(true, forKey: guestKey)
         mode = .guest
     }
 
     func completeLogin() {
-        UserDefaults.standard.set(false, forKey: guestKey)
+        defaults.set(false, forKey: guestKey)
         mode = .signedIn
     }
 
     func signOut() {
-        CredentialStore.shared.delete()
-        UserDefaults.standard.set(false, forKey: guestKey)
+        clearSession()
+    }
+
+    func switchAccount() {
+        clearSession()
+    }
+
+    func resetApplication() {
+        credentialStore.delete()
+        localCache.clear()
+
+        if let bundleIdentifier = Bundle.main.bundleIdentifier {
+            defaults.removePersistentDomain(forName: bundleIdentifier)
+        } else {
+            for key in defaults.dictionaryRepresentation().keys {
+                defaults.removeObject(forKey: key)
+            }
+        }
+
         mode = .signedOut
     }
 
-    func leaveGuestMode() {
-        signOut()
+    private func clearSession() {
+        credentialStore.delete()
+        defaults.set(false, forKey: guestKey)
+        localCache.clear()
+        mode = .signedOut
     }
 }
