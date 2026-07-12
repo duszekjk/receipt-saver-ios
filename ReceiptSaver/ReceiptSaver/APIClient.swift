@@ -52,6 +52,17 @@ final class APIClient {
         return data
     }
 
+    func registerGuest() async throws -> AppLoginPayload {
+        var req = request("guest/register/", method: "POST", body: Data())
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let (value, response) = try await URLSession.shared.data(for: req)
+        guard let http = response as? HTTPURLResponse else { throw URLError(.badServerResponse) }
+        guard (200...299).contains(http.statusCode) else {
+            throw APIError(statusCode: http.statusCode, body: String(data: value, encoding: .utf8) ?? "")
+        }
+        return try JSONDecoder().decode(AppLoginPayload.self, from: value)
+    }
+
     func me() async throws -> MobileProfile {
         let value = try await data(for: request("me/"))
         return try JSONDecoder().decode(MobileProfile.self, from: value)
