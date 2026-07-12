@@ -2,6 +2,7 @@ import SwiftUI
 import AVFoundation
 
 struct DashboardView: View {
+    @EnvironmentObject private var toastCenter: ToastCenter
     @State private var period = "month"
     @State private var selectedMonth = ""
     @State private var categoryFilter = ""
@@ -281,7 +282,10 @@ struct DashboardView: View {
 
     private func openBestScanner() {
         requestCameraAccess { granted in
-            guard granted else { uploadStatus = "Brak dostępu do aparatu. Włącz dostęp w Ustawieniach."; scheduleDashboardRetry(); return }
+            guard granted else {
+                toastCenter.show("Brak dostępu do aparatu. Włącz dostęp w Ustawieniach.", style: .error, duration: 4)
+                return
+            }
             if DocumentScannerView.isAvailable { showScanner = true } else { pickerSource = .camera; showPicker = true }
         }
     }
@@ -326,8 +330,20 @@ struct DashboardView: View {
 
     private func upload(_ image: UIImage) async {
         uploadStatus = "Wysyłam paragon..."
-        do { _ = try await APIClient.shared.uploadReceipt(image: image); uploadStatus = "Paragon dodany"; await loadDashboard() }
-        catch { uploadStatus = "Błąd wysyłania paragonu: \(errorMessage(error))"; scheduleDashboardRetry() }
+        showRetryButton = false
+        do {
+            let response = try await APIClient.shared.uploadReceipt(image: image)
+            uploadStatus = ""
+            if response.requiresManualDate {
+                toastCenter.show(response.message, style: .info, duration: 4)
+            } else {
+                toastCenter.show("Paragon został dodany.", style: .success)
+            }
+            await loadDashboard()
+        } catch {
+            uploadStatus = ""
+            toastCenter.show("Błąd wysyłania paragonu: \(errorMessage(error))", style: .error, duration: 5)
+        }
     }
 
     private func errorMessage(_ error: Error) -> String {
