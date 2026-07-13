@@ -26,25 +26,20 @@ struct QRLoginView: View {
                     .padding(.horizontal)
 
                 if showScanner {
-                    QRScannerView { code in
-                        handle(code)
-                    }
+                    QRScannerView(
+                        onCode: handle,
+                        onError: { message in
+                            status = message
+                            showScanner = false
+                        }
+                    )
                     .frame(maxWidth: .infinity, minHeight: 320, maxHeight: 420)
                     .clipShape(RoundedRectangle(cornerRadius: 18))
                     .padding(.horizontal)
                 }
 
                 Button {
-                    if showScanner {
-                        status = "Zeskanuj kod QR otrzymany w zaproszeniu."
-                        showScanner = false
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                            showScanner = true
-                        }
-                    } else {
-                        status = "Zeskanuj kod QR otrzymany w zaproszeniu."
-                        showScanner = true
-                    }
+                    openScanner()
                 } label: {
                     Label(showScanner ? "Spróbuj ponownie" : "Zaloguj się kodem QR", systemImage: "qrcode.viewfinder")
                         .frame(maxWidth: .infinity, minHeight: 46)
@@ -100,6 +95,41 @@ struct QRLoginView: View {
         }
     }
 
+    private func openScanner() {
+        let open = {
+            status = "Zeskanuj kod QR otrzymany w zaproszeniu."
+            if showScanner {
+                showScanner = false
+                DispatchQueue.main.async {
+                    showScanner = true
+                }
+            } else {
+                showScanner = true
+            }
+        }
+
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .authorized:
+            open()
+        case .notDetermined:
+            AVCaptureDevice.requestAccess(for: .video) { granted in
+                DispatchQueue.main.async {
+                    if granted {
+                        open()
+                    } else {
+                        status = "Włącz dostęp do aparatu w Ustawieniach, aby zeskanować kod QR."
+                    }
+                }
+            }
+        case .denied, .restricted:
+            status = "Włącz dostęp do aparatu w Ustawieniach, aby zeskanować kod QR."
+            showScanner = false
+        @unknown default:
+            status = "Nie udało się uruchomić aparatu."
+            showScanner = false
+        }
+    }
+
     @MainActor
     private func createGuest() async {
         guard !isCreatingGuest else { return }
@@ -136,10 +166,12 @@ struct QRLoginView: View {
 
 struct QRScannerView: UIViewControllerRepresentable {
     let onCode: (String) -> Void
+    let onError: (String) -> Void
 
     func makeUIViewController(context: Context) -> ScannerController {
         let controller = ScannerController()
         controller.onCode = onCode
+        controller.onError = onError
         return controller
     }
 
@@ -148,45 +180,113 @@ struct QRScannerView: UIViewControllerRepresentable {
 
 final class ScannerController: UIViewController, AVCaptureMetadataOutputObjectsDelegate {
     var onCode: ((String) -> Void)?
+    var onError: ((String) -> Void)?
+
     private let session = AVCaptureSession()
+    private let sessionQueue = DispatchQueue(label: "receipt-saver.qr-camera")
+    private lazy var previewLayer: AVCaptureVideoPreviewLayer = {
+        let layer = AVCaptureVideoPreviewLayer(session: session)
+        layer.videoGravity = .resizeAspectFill
+        return layer
+    }()
+    private var isConfigured = false
     private var didScan = false
 
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .black
-        configure()
+        view.layer.addSublayer(previewLayer)
+        configureSession()
     }
 
-    private func configure() {
-        guard let device = AVCaptureDevice.default(for: .video),
-              let input = try? AVCaptureDeviceInput(device: device),
-              session.canAddInput(input) else { return }
-        session.addInput(input)
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        startSession()
+    }
 
-        let output = AVCaptureMetadataOutput()
-        guard session.canAddOutput(output) else { return }
-        session.addOutput(output)
-        output.setMetadataObjectsDelegate(self, queue: DispatchQueue.main)
-        output.metadataObjectTypes = [.qr]
-
-        let preview = AVCaptureVideoPreviewLayer(session: session)
-        preview.videoGravity = .resizeAspectFill
-        preview.frame = view.bounds
-        view.layer.addSublayer(preview)
-        DispatchQueue.global(qos: .userInitiated).async { self.session.startRunning() }
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        stopSession()
     }
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        view.layer.sublayers?.first?.frame = view.bounds
+        previewLayer.frame = view.bounds
     }
 
-    func metadataOutput(_ output: AVCaptureMetadataOutput, didOutput metadataObjects: [AVMetadataObject], from connection: AVCaptureConnection) {
+    private func configureSession() {
+        sessionQueue.async { [weak self] in
+            guard let self, !self.isConfigured else { return }
+
+            self.session.beginConfiguration()
+            self.session.sessionPreset = .high
+            defer { self.session.commitConfiguration() }
+
+            let discovery = AVCaptureDevice.DiscoverySession(
+                deviceTypes: [.builtInWideAngleCamera],
+                mediaType: .video,
+                position: .back
+            )
+            guard let camera = discovery.devices.first ?? AVCaptureDevice.default(for: .video),
+                  let input = try? AVCaptureDeviceInput(device: camera),
+                  self.session.canAddInput(input) else {
+                self.reportError("Nie udało się uruchomić aparatu na tym urządzeniu.")
+                return
+            }
+            self.session.addInput(input)
+
+            let output = AVCaptureMetadataOutput()
+            guard self.session.canAddOutput(output) else {
+                self.reportError("Nie udało się uruchomić skanera kodów QR.")
+                return
+            }
+            self.session.addOutput(output)
+            output.setMetadataObjectsDelegate(self, queue: .main)
+            output.metadataObjectTypes = output.availableMetadataObjectTypes.contains(.qr) ? [.qr] : []
+
+            guard output.metadataObjectTypes.contains(.qr) else {
+                self.reportError("Skanowanie kodów QR nie jest dostępne na tym urządzeniu.")
+                return
+            }
+
+            self.isConfigured = true
+            if self.viewIfLoaded?.window != nil {
+                self.session.startRunning()
+            }
+        }
+    }
+
+    private func startSession() {
+        sessionQueue.async { [weak self] in
+            guard let self, self.isConfigured, !self.session.isRunning else { return }
+            self.didScan = false
+            self.session.startRunning()
+        }
+    }
+
+    private func stopSession() {
+        sessionQueue.async { [weak self] in
+            guard let self, self.session.isRunning else { return }
+            self.session.stopRunning()
+        }
+    }
+
+    private func reportError(_ message: String) {
+        DispatchQueue.main.async { [weak self] in
+            self?.onError?(message)
+        }
+    }
+
+    func metadataOutput(
+        _ output: AVCaptureMetadataOutput,
+        didOutput metadataObjects: [AVMetadataObject],
+        from connection: AVCaptureConnection
+    ) {
         guard !didScan,
               let object = metadataObjects.first as? AVMetadataMachineReadableCodeObject,
               let string = object.stringValue else { return }
         didScan = true
-        session.stopRunning()
+        stopSession()
         onCode?(string)
     }
 }
