@@ -30,7 +30,7 @@ final class ToastCenter: ObservableObject {
 
     private init() {}
 
-    func show(_ message: String, style: AppToastStyle = .info, duration: TimeInterval = 2.5) {
+    func show(_ message: String, style: AppToastStyle = .info, duration: TimeInterval = 12.5) {
         dismissTask?.cancel()
         withAnimation(.spring(response: 0.3, dampingFraction: 0.86)) {
             toast = AppToast(message: message, style: style)
@@ -62,7 +62,7 @@ private struct AppToastOverlay: ViewModifier {
                     Image(systemName: toast.style.systemImage)
                     Text(toast.message)
                         .font(.subheadline)
-                        .lineLimit(3)
+                        .lineLimit(5)
                     Spacer(minLength: 0)
                 }
                 .padding(.horizontal, 14)
