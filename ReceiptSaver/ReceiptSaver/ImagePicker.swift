@@ -48,8 +48,9 @@ struct ImagePicker: UIViewControllerRepresentable {
 }
 
 struct DocumentScannerView: UIViewControllerRepresentable {
-    let onImage: (UIImage) -> Void
+    let onPages: ([UIImage]) -> Void
     let onCancel: () -> Void
+    let onError: (String) -> Void
 
     static var isAvailable: Bool {
         VNDocumentCameraViewController.isSupported
@@ -64,26 +65,31 @@ struct DocumentScannerView: UIViewControllerRepresentable {
     func updateUIViewController(_ uiViewController: VNDocumentCameraViewController, context: Context) {}
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(onImage: onImage, onCancel: onCancel)
+        Coordinator(onPages: onPages, onCancel: onCancel, onError: onError)
     }
 
     final class Coordinator: NSObject, VNDocumentCameraViewControllerDelegate {
-        let onImage: (UIImage) -> Void
+        let onPages: ([UIImage]) -> Void
         let onCancel: () -> Void
+        let onError: (String) -> Void
 
-        init(onImage: @escaping (UIImage) -> Void, onCancel: @escaping () -> Void) {
-            self.onImage = onImage
+        init(
+            onPages: @escaping ([UIImage]) -> Void,
+            onCancel: @escaping () -> Void,
+            onError: @escaping (String) -> Void
+        ) {
+            self.onPages = onPages
             self.onCancel = onCancel
+            self.onError = onError
         }
 
         func documentCameraViewController(_ controller: VNDocumentCameraViewController, didFinishWith scan: VNDocumentCameraScan) {
             guard scan.pageCount > 0 else {
-                controller.dismiss(animated: true)
-                onCancel()
+                controller.dismiss(animated: true) { self.onCancel() }
                 return
             }
-            let image = scan.imageOfPage(at: 0).preprocessedForReceipt()
-            controller.dismiss(animated: true) { self.onImage(image) }
+            let pages = (0..<scan.pageCount).map { scan.imageOfPage(at: $0).preprocessedForReceipt() }
+            controller.dismiss(animated: true) { self.onPages(pages) }
         }
 
         func documentCameraViewControllerDidCancel(_ controller: VNDocumentCameraViewController) {
@@ -91,7 +97,7 @@ struct DocumentScannerView: UIViewControllerRepresentable {
         }
 
         func documentCameraViewController(_ controller: VNDocumentCameraViewController, didFailWithError error: Error) {
-            controller.dismiss(animated: true) { self.onCancel() }
+            controller.dismiss(animated: true) { self.onError(error.localizedDescription) }
         }
     }
 }
@@ -102,9 +108,39 @@ extension UIImage {
         return resized.grayscaleImage() ?? resized
     }
 
+    static func combinedDocument(from pages: [UIImage], maxPageWidth: CGFloat = 1800) -> UIImage? {
+        guard !pages.isEmpty else { return nil }
+        let normalized = pages.map { page -> UIImage in
+            let widthScale = min(maxPageWidth / page.size.width, 1)
+            let targetWidth = page.size.width * widthScale
+            let targetHeight = page.size.height * widthScale
+            return page.resized(to: CGSize(width: targetWidth, height: targetHeight)).grayscaleImage() ?? page
+        }
+        let width = normalized.map(\.size.width).max() ?? maxPageWidth
+        let height = normalized.reduce(CGFloat.zero) { $0 + $1.size.height }
+        guard width > 0, height > 0 else { return nil }
+
+        UIGraphicsBeginImageContextWithOptions(CGSize(width: width, height: height), true, 1)
+        UIColor.white.setFill()
+        UIRectFill(CGRect(x: 0, y: 0, width: width, height: height))
+        var y: CGFloat = 0
+        for page in normalized {
+            let x = (width - page.size.width) / 2
+            page.draw(in: CGRect(x: x, y: y, width: page.size.width, height: page.size.height))
+            y += page.size.height
+        }
+        let result = UIGraphicsGetImageFromCurrentImageContext()
+        UIGraphicsEndImageContext()
+        return result
+    }
+
     private func resizedKeepingAspect(maxDimension: CGFloat) -> UIImage {
         let scale = min(maxDimension / max(size.width, size.height), 1)
-        let newSize = CGSize(width: size.width * scale, height: size.height * scale)
+        return resized(to: CGSize(width: size.width * scale, height: size.height * scale))
+    }
+
+    private func resized(to newSize: CGSize) -> UIImage {
+        guard newSize.width > 0, newSize.height > 0, newSize != size else { return self }
         UIGraphicsBeginImageContextWithOptions(newSize, true, 1.0)
         draw(in: CGRect(origin: .zero, size: newSize))
         let resized = UIGraphicsGetImageFromCurrentImageContext()
