@@ -125,8 +125,8 @@ final class APIClient {
         return try JSONDecoder().decode(MatchCandidate.self, from: value)
     }
 
-    func uploadReceipt(image: UIImage) async throws -> ReceiptUploadResponse {
-        let processed = image.preprocessedForReceipt()
+    func uploadReceipt(image: UIImage, alreadyProcessed: Bool = false) async throws -> ReceiptUploadResponse {
+        let processed = alreadyProcessed ? image : image.preprocessedForReceipt()
         guard let imageData = processed.jpegData(compressionQuality: 0.72) else { throw URLError(.cannotDecodeContentData) }
         let boundary = UUID().uuidString
         var body = Data()
