@@ -178,6 +178,47 @@ final class APIClient {
         let value = try await data(for: req)
         return try JSONDecoder().decode(BankImportJobStatus.self, from: value)
     }
+
+    func cycleRules(query: String = "") async throws -> [ProductCycleRule] {
+        let url = baseURL.appendingPathComponent("lifecycle/rules/")
+        var components = URLComponents(url: url, resolvingAgainstBaseURL: false)!
+        if !query.isEmpty { components.queryItems = [URLQueryItem(name: "q", value: query)] }
+        let value = try await data(for: URLRequest(url: components.url!, cachePolicy: .reloadIgnoringLocalCacheData))
+        return try JSONDecoder().decode([ProductCycleRule].self, from: value)
+    }
+
+    func saveCycleRule(productName: String, intervalDays: Int, reminderBeforeDays: Int) async throws -> ProductCycleRule {
+        let body = try JSONSerialization.data(withJSONObject: [
+            "product_name": productName,
+            "interval_days": intervalDays,
+            "reminder_before_days": reminderBeforeDays,
+            "enabled": true,
+        ])
+        var req = request("lifecycle/rules/", method: "POST", body: body)
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let value = try await data(for: req)
+        return try JSONDecoder().decode(ProductCycleRule.self, from: value)
+    }
+
+    func deleteCycleRule(id: Int) async throws {
+        _ = try await data(for: request("lifecycle/rules/\(id)/", method: "DELETE"))
+    }
+
+    func cycleSuggestion(productName: String) async throws -> ProductCycleSuggestionResponse {
+        let url = baseURL.appendingPathComponent("lifecycle/suggestion/")
+        var components = URLComponents(url: url, resolvingAgainstBaseURL: false)!
+        components.queryItems = [URLQueryItem(name: "product_name", value: productName)]
+        let value = try await data(for: URLRequest(url: components.url!, cachePolicy: .reloadIgnoringLocalCacheData))
+        return try JSONDecoder().decode(ProductCycleSuggestionResponse.self, from: value)
+    }
+
+    func searchPurchases(query: String) async throws -> [PurchaseSearchResult] {
+        let url = baseURL.appendingPathComponent("search/")
+        var components = URLComponents(url: url, resolvingAgainstBaseURL: false)!
+        components.queryItems = [URLQueryItem(name: "q", value: query)]
+        let value = try await data(for: URLRequest(url: components.url!, cachePolicy: .reloadIgnoringLocalCacheData))
+        return try JSONDecoder().decode([PurchaseSearchResult].self, from: value)
+    }
 }
 
 private extension Data {
