@@ -48,9 +48,8 @@ struct ImagePicker: UIViewControllerRepresentable {
 }
 
 struct DocumentScannerView: UIViewControllerRepresentable {
-    let onPages: ([UIImage]) -> Void
+    let onImage: (UIImage) -> Void
     let onCancel: () -> Void
-    let onError: (String) -> Void
 
     static var isAvailable: Bool {
         VNDocumentCameraViewController.isSupported
@@ -65,22 +64,16 @@ struct DocumentScannerView: UIViewControllerRepresentable {
     func updateUIViewController(_ uiViewController: VNDocumentCameraViewController, context: Context) {}
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(onPages: onPages, onCancel: onCancel, onError: onError)
+        Coordinator(onImage: onImage, onCancel: onCancel)
     }
 
     final class Coordinator: NSObject, VNDocumentCameraViewControllerDelegate {
-        let onPages: ([UIImage]) -> Void
+        let onImage: (UIImage) -> Void
         let onCancel: () -> Void
-        let onError: (String) -> Void
 
-        init(
-            onPages: @escaping ([UIImage]) -> Void,
-            onCancel: @escaping () -> Void,
-            onError: @escaping (String) -> Void
-        ) {
-            self.onPages = onPages
+        init(onImage: @escaping (UIImage) -> Void, onCancel: @escaping () -> Void) {
+            self.onImage = onImage
             self.onCancel = onCancel
-            self.onError = onError
         }
 
         func documentCameraViewController(_ controller: VNDocumentCameraViewController, didFinishWith scan: VNDocumentCameraScan) {
@@ -88,8 +81,47 @@ struct DocumentScannerView: UIViewControllerRepresentable {
                 controller.dismiss(animated: true) { self.onCancel() }
                 return
             }
+
             let pages = (0..<scan.pageCount).map { scan.imageOfPage(at: $0).preprocessedForReceipt() }
-            controller.dismiss(animated: true) { self.onPages(pages) }
+            guard pages.count > 1 else {
+                controller.dismiss(animated: true) { self.onImage(pages[0]) }
+                return
+            }
+
+            let choice = UIAlertController(
+                title: "Jak traktować zeskanowane strony?",
+                message: "Wybierz, czy strony tworzą jeden dokument, czy każda strona jest osobnym paragonem.",
+                preferredStyle: .actionSheet
+            )
+            choice.addAction(UIAlertAction(title: "Jeden wielostronicowy dokument", style: .default) { _ in
+                guard let document = UIImage.combinedDocument(from: pages) else {
+                    controller.dismiss(animated: true) {
+                        ToastCenter.shared.show("Nie udało się połączyć stron dokumentu.", style: .error)
+                    }
+                    return
+                }
+                controller.dismiss(animated: true) { self.onImage(document) }
+            })
+            choice.addAction(UIAlertAction(title: "Każda strona to osobny paragon", style: .default) { _ in
+                controller.dismiss(animated: true) {
+                    for (index, page) in pages.enumerated() {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + Double(index) * 0.5) {
+                            self.onImage(page)
+                        }
+                    }
+                }
+            })
+            choice.addAction(UIAlertAction(title: "Anuluj", style: .cancel))
+            if let popover = choice.popoverPresentationController {
+                popover.sourceView = controller.view
+                popover.sourceRect = CGRect(
+                    x: controller.view.bounds.midX,
+                    y: controller.view.bounds.maxY - 1,
+                    width: 1,
+                    height: 1
+                )
+            }
+            controller.present(choice, animated: true)
         }
 
         func documentCameraViewControllerDidCancel(_ controller: VNDocumentCameraViewController) {
@@ -97,25 +129,28 @@ struct DocumentScannerView: UIViewControllerRepresentable {
         }
 
         func documentCameraViewController(_ controller: VNDocumentCameraViewController, didFailWithError error: Error) {
-            controller.dismiss(animated: true) { self.onError(error.localizedDescription) }
+            controller.dismiss(animated: true) {
+                ToastCenter.shared.show("Nie udało się zeskanować dokumentu: \(error.localizedDescription)", style: .error)
+                self.onCancel()
+            }
         }
     }
 }
 
 extension UIImage {
     func preprocessedForReceipt(maxDimension: CGFloat = 1800) -> UIImage {
-        let resized = resizedKeepingAspect(maxDimension: maxDimension)
+        let resized: UIImage
+        if size.height > size.width * 1.8 {
+            resized = resizedKeepingWidth(maxWidth: maxDimension)
+        } else {
+            resized = resizedKeepingAspect(maxDimension: maxDimension)
+        }
         return resized.grayscaleImage() ?? resized
     }
 
     static func combinedDocument(from pages: [UIImage], maxPageWidth: CGFloat = 1800) -> UIImage? {
         guard !pages.isEmpty else { return nil }
-        let normalized = pages.map { page -> UIImage in
-            let widthScale = min(maxPageWidth / page.size.width, 1)
-            let targetWidth = page.size.width * widthScale
-            let targetHeight = page.size.height * widthScale
-            return page.resized(to: CGSize(width: targetWidth, height: targetHeight)).grayscaleImage() ?? page
-        }
+        let normalized = pages.map { $0.resizedKeepingWidth(maxWidth: maxPageWidth).grayscaleImage() ?? $0 }
         let width = normalized.map(\.size.width).max() ?? maxPageWidth
         let height = normalized.reduce(CGFloat.zero) { $0 + $1.size.height }
         guard width > 0, height > 0 else { return nil }
@@ -136,6 +171,11 @@ extension UIImage {
 
     private func resizedKeepingAspect(maxDimension: CGFloat) -> UIImage {
         let scale = min(maxDimension / max(size.width, size.height), 1)
+        return resized(to: CGSize(width: size.width * scale, height: size.height * scale))
+    }
+
+    private func resizedKeepingWidth(maxWidth: CGFloat) -> UIImage {
+        let scale = min(maxWidth / size.width, 1)
         return resized(to: CGSize(width: size.width * scale, height: size.height * scale))
     }
 
