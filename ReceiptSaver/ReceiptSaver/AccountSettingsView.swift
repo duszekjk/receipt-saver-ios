@@ -6,6 +6,15 @@ struct AccountSettingsView: View {
 
     var body: some View {
         List {
+            Section("Zakupy") {
+                NavigationLink(destination: LifecycleView()) {
+                    Label("Zużycie i przypomnienia", systemImage: "clock.arrow.circlepath")
+                }
+                NavigationLink(destination: PurchaseSearchView()) {
+                    Label("Szukaj zakupów", systemImage: "magnifyingglass")
+                }
+            }
+
             Section("Konto") {
                 Button("Wyloguj się", role: .destructive) {
                     showSignOutConfirmation = true
